@@ -1,4 +1,4 @@
-using Ionic.Zip;
+п»їusing Ionic.Zip;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -19,7 +19,7 @@ namespace WinFormsApp1
 {
     public partial class Form1 : Form
     {
-        private readonly string statusbarLabelDefaultText = "Готово";
+        private readonly string statusbarLabelDefaultText = "Р“РѕС‚РѕРІРѕ";
         private readonly string VKDriveFolder = @"D:\VKDrive";
         private readonly string temporaryFolder = @"D:\VKDrive\tmp";
         private readonly string downloadedFolder = @"D:\VKDrive\Downloaded";
@@ -94,7 +94,7 @@ namespace WinFormsApp1
         private async Task UploadFileToVkAsync(string file_path)
         {
             StartProgressBar();
-            toolStripStatusLabel1.Text = "Загрузка файла в облако";
+            toolStripStatusLabel1.Text = "Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»Р° РІ РѕР±Р»Р°РєРѕ";
             DisableButtons();
 
             var cloudFile = new CloudFile();
@@ -109,7 +109,7 @@ namespace WinFormsApp1
             });
 
             cloudFile.Size = fileSize;
-            toolStripStatusLabel1.Text = "Вычисление хэш-суммы";
+            toolStripStatusLabel1.Text = "Р’С‹С‡РёСЃР»РµРЅРёРµ С…СЌС€-СЃСѓРјРјС‹";
             var sha256Checksum = string.Empty;
             await Task.Run(() =>
             {
@@ -118,8 +118,8 @@ namespace WinFormsApp1
 
             var systemFolder = CreateSystemFolder(sha256Checksum);
 
-            // Зашифровать файл
-            toolStripStatusLabel1.Text = "Шифрование файла";
+            // Р—Р°С€РёС„СЂРѕРІР°С‚СЊ С„Р°Р№Р»
+            toolStripStatusLabel1.Text = "РЁРёС„СЂРѕРІР°РЅРёРµ С„Р°Р№Р»Р°";
             var key = GenerateEncryptionKey(settings.AesPasswordLength);
             var initVector = GenerateEncryptionKey(16);
             var encryptedFilePath = string.Empty;
@@ -128,7 +128,7 @@ namespace WinFormsApp1
                 encryptedFilePath = EncryptFile(file_path, key, initVector);
             });
 
-            toolStripStatusLabel1.Text = "Архивирование файла";
+            toolStripStatusLabel1.Text = "РђСЂС…РёРІРёСЂРѕРІР°РЅРёРµ С„Р°Р№Р»Р°";
             var uniqueName = $"{Guid.NewGuid()}";
             cloudFile.UniqueName = uniqueName;
             var archivePath = Path.Combine(temporaryFolder, $"{uniqueName}.7z");
@@ -141,7 +141,7 @@ namespace WinFormsApp1
             
             File.Delete(encryptedFilePath);
 
-            toolStripStatusLabel1.Text = "Разделение файла на части";
+            toolStripStatusLabel1.Text = "Р Р°Р·РґРµР»РµРЅРёРµ С„Р°Р№Р»Р° РЅР° С‡Р°СЃС‚Рё";
             var chunkSize = CalculateChunkSize(file_path, settings.ChunkToUploadSize);
 
             await Task.Run(() =>
@@ -152,7 +152,7 @@ namespace WinFormsApp1
 
             if (File.Exists(archivePath))
             {
-                toolStripStatusLabel1.Text = "Удаление архива";
+                toolStripStatusLabel1.Text = "РЈРґР°Р»РµРЅРёРµ Р°СЂС…РёРІР°";
                 File.Delete(archivePath);
             }
 
@@ -160,7 +160,7 @@ namespace WinFormsApp1
             filesPaths = SortFiles(filesPaths);
             var links = new List<string>();
 
-            var uploadingStatus = "Загрузка файлов на сервер ВК";
+            var uploadingStatus = "Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»РѕРІ РЅР° СЃРµСЂРІРµСЂ Р’Рљ";
             toolStripStatusLabel1.Text = uploadingStatus;
             var uploadingFileCounter = 0;
 
@@ -175,7 +175,7 @@ namespace WinFormsApp1
                 {
                     var rnd = new Random();
                     toolStripStatusLabel1.Text = "VK API rest, please wait...";
-                    await Task.Delay(rnd.Next(1000 * 60 * 5, 1000 * 60 * 8)); // Задержка, чтобы "успокоить" VK API...
+                    await Task.Delay(rnd.Next(1000 * 60 * 5, 1000 * 60 * 8)); // Р—Р°РґРµСЂР¶РєР°, С‡С‚РѕР±С‹ "СѓСЃРїРѕРєРѕРёС‚СЊ" VK API...
                 }
 
                 if (IsCaptchaNeeded(savedFileInfo))
@@ -205,7 +205,7 @@ namespace WinFormsApp1
             var jsonString = System.Text.Json.JsonSerializer.Serialize(_cloudFiles, new JsonSerializerOptions() { WriteIndented = true });
             File.WriteAllText(_jsonCloudFilesLocation, jsonString);
 
-            var deletionStatus = "Удаление временных файлов";
+            var deletionStatus = "РЈРґР°Р»РµРЅРёРµ РІСЂРµРјРµРЅРЅС‹С… С„Р°Р№Р»РѕРІ";
             toolStripStatusLabel1.Text = deletionStatus;
             var di = new DirectoryInfo(systemFolder);
             var tempFilesCounter = 1;
@@ -225,20 +225,20 @@ namespace WinFormsApp1
             }
 
 
-            // NB! Данный (UploadFileToVkAsync) метод не вызывает остановку прогресс бара в конце выполнения работы, т.к.
-            // метод RefreshFileList вызывает остановку прогресс бара в конце выполнения своей работы.
+            // NB! Р”Р°РЅРЅС‹Р№ (UploadFileToVkAsync) РјРµС‚РѕРґ РЅРµ РІС‹Р·С‹РІР°РµС‚ РѕСЃС‚Р°РЅРѕРІРєСѓ РїСЂРѕРіСЂРµСЃСЃ Р±Р°СЂР° РІ РєРѕРЅС†Рµ РІС‹РїРѕР»РЅРµРЅРёСЏ СЂР°Р±РѕС‚С‹, С‚.Рє.
+            // РјРµС‚РѕРґ RefreshFileList РІС‹Р·С‹РІР°РµС‚ РѕСЃС‚Р°РЅРѕРІРєСѓ РїСЂРѕРіСЂРµСЃСЃ Р±Р°СЂР° РІ РєРѕРЅС†Рµ РІС‹РїРѕР»РЅРµРЅРёСЏ СЃРІРѕРµР№ СЂР°Р±РѕС‚С‹.
 
             await RefreshFileList();
         }
 
         private void ShowCaptchaWindow(string requestToRepeat, string captchaSid, string captchaImgUrl, List<string> links)
         {
-            //Создать окно
+            //РЎРѕР·РґР°С‚СЊ РѕРєРЅРѕ
             var captchaForm = new Form
             {
                 Width = 300,
                 Height = 250,
-                Text = "Ведите Captcha",
+                Text = "Р’РµРґРёС‚Рµ Captcha",
                 MinimizeBox = false,
                 StartPosition = FormStartPosition.CenterScreen
             };
@@ -262,7 +262,7 @@ namespace WinFormsApp1
 
             var submitButton = new Button
             {
-                Text = "Отправить",
+                Text = "РћС‚РїСЂР°РІРёС‚СЊ",
                 Location = new Point(100, 160)
             };
             captchaForm.Controls.Add(submitButton);
@@ -293,7 +293,7 @@ namespace WinFormsApp1
                 var responseBody = await response.Content.ReadAsStringAsync();
 
                 var jsonObj = JsonObject.Parse(responseBody);
-                var URLToDownloadFile = jsonObj["response"]["doc"]["url"].ToString(); // TODO Если капча введена неправильно то System.NullReferenceException.
+                var URLToDownloadFile = jsonObj["response"]["doc"]["url"].ToString(); // TODO Р•СЃР»Рё РєР°РїС‡Р° РІРІРµРґРµРЅР° РЅРµРїСЂР°РІРёР»СЊРЅРѕ С‚Рѕ System.NullReferenceException.
                 links.Add(URLToDownloadFile);
 
                 captchaForm.Close();
@@ -318,7 +318,7 @@ namespace WinFormsApp1
         {
             StartProgressBar();
             DisableButtons();
-            toolStripStatusLabel1.Text = "Обновление списка";
+            toolStripStatusLabel1.Text = "РћР±РЅРѕРІР»РµРЅРёРµ СЃРїРёСЃРєР°";
             listBox1.DataSource = null;
             if (settings.SortByName)
             {
@@ -501,12 +501,12 @@ namespace WinFormsApp1
                 if (ex.StatusCode == HttpStatusCode.GatewayTimeout)
                 {
                     // Handle the gateway timeout error
-                    ShowPopupErrorMessagebox("Ошибка", "The server did not respond within the expected time. Please try again later.");
+                    ShowPopupErrorMessagebox("РћС€РёР±РєР°", "The server did not respond within the expected time. Please try again later.");
                 }
                 else
                 {
                     // Handle any other HTTP request error
-                    ShowPopupErrorMessagebox("Ошибка", $"An HTTP request error occurred: {ex.Message}");
+                    ShowPopupErrorMessagebox("РћС€РёР±РєР°", $"An HTTP request error occurred: {ex.Message}");
                 }
             }
 
@@ -647,7 +647,7 @@ namespace WinFormsApp1
             }
             catch (BadPasswordException)
             {
-                MessageBox.Show("Неверный пароль от архива. Возможно, файл был повреждён или изменён", "Ошибка",
+                MessageBox.Show("РќРµРІРµСЂРЅС‹Р№ РїР°СЂРѕР»СЊ РѕС‚ Р°СЂС…РёРІР°. Р’РѕР·РјРѕР¶РЅРѕ, С„Р°Р№Р» Р±С‹Р» РїРѕРІСЂРµР¶РґС‘РЅ РёР»Рё РёР·РјРµРЅС‘РЅ", "РћС€РёР±РєР°",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error,
                         MessageBoxDefaultButton.Button1);
@@ -740,7 +740,7 @@ namespace WinFormsApp1
                 WriteIndented = true // optional: format the JSON with indentation
             };
 
-            // Сериализовать объект в JSON строку
+            // РЎРµСЂРёР°Р»РёР·РѕРІР°С‚СЊ РѕР±СЉРµРєС‚ РІ JSON СЃС‚СЂРѕРєСѓ
             string jsonString = System.Text.Json.JsonSerializer.Serialize(data, jsonOptions);
 
             if (!File.Exists(jsonPath))
@@ -790,12 +790,12 @@ namespace WinFormsApp1
             }
             catch (IOException e)
             {
-                ShowPopupErrorMessagebox("Невозможно посчитать SHA256", e.Message);
+                ShowPopupErrorMessagebox("РќРµРІРѕР·РјРѕР¶РЅРѕ РїРѕСЃС‡РёС‚Р°С‚СЊ SHA256", e.Message);
                 return $"I/O Exception: {e.Message}";
             }
             catch (UnauthorizedAccessException e)
             {
-                ShowPopupErrorMessagebox("Невозможно посчитать SHA256", e.Message);
+                ShowPopupErrorMessagebox("РќРµРІРѕР·РјРѕР¶РЅРѕ РїРѕСЃС‡РёС‚Р°С‚СЊ SHA256", e.Message);
                 return $"Access Exception: {e.Message}";
             }
 
@@ -825,7 +825,7 @@ namespace WinFormsApp1
                 var selectedFileName = openFileDialog.FileName;
                 if (string.IsNullOrEmpty(settings.AccessToken))
                 {
-                    ShowPopupErrorMessagebox("Ошибка VK API", "Невозможно загрузить файл: не настроен токен доступа");
+                    ShowPopupErrorMessagebox("РћС€РёР±РєР° VK API", "РќРµРІРѕР·РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР·РёС‚СЊ С„Р°Р№Р»: РЅРµ РЅР°СЃС‚СЂРѕРµРЅ С‚РѕРєРµРЅ РґРѕСЃС‚СѓРїР°");
                     return;
                 }
 
@@ -884,7 +884,7 @@ namespace WinFormsApp1
             {
                 StartProgressBar();
                 DisableButtons();
-                toolStripStatusLabel1.Text = $"Скачивание файла {_selectedFile.NameAndSize}";
+                toolStripStatusLabel1.Text = $"РЎРєР°С‡РёРІР°РЅРёРµ С„Р°Р№Р»Р° {_selectedFile.NameAndSize}";
 
                 var filePartsToDownload = GetLinksFromJson(_selectedFile.jsonPath);
                 var fileFolder = Path.Combine(VKDriveFolder, Path.GetFileNameWithoutExtension(_selectedFile.jsonPath));
@@ -912,14 +912,14 @@ namespace WinFormsApp1
                 var restoredArchive = Path.Combine(temporaryFolder, "restored.7z");
                 var tempFolderForDecompressedFile = Path.Combine(temporaryFolder, Guid.NewGuid().ToString());
 
-                ChangeStatusbarText("Объединение частей файла");
+                ChangeStatusbarText("РћР±СЉРµРґРёРЅРµРЅРёРµ С‡Р°СЃС‚РµР№ С„Р°Р№Р»Р°");
 
                 await Task.Run(() =>
                 {
                     JoinParts(fileFolder, restoredArchive);
                 });
 
-                toolStripStatusLabel1.Text = "Распаковка архива";
+                toolStripStatusLabel1.Text = "Р Р°СЃРїР°РєРѕРІРєР° Р°СЂС…РёРІР°";
                 await Task.Run(() =>
                 {
                     DecompressFile(restoredArchive, tempFolderForDecompressedFile, GetValueFromJsonAsync(_selectedFile.jsonPath, "ArchivePassword"));
@@ -933,8 +933,8 @@ namespace WinFormsApp1
                 }
                 catch (System.IO.DirectoryNotFoundException message)
                 {
-                    ShowPopupErrorMessagebox("Ошибка", $"Не удалось распаковать архив\n{message.Message}");
-                    toolStripStatusLabel1.Text = "Удаление временных файлов";
+                    ShowPopupErrorMessagebox("РћС€РёР±РєР°", $"РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃРїР°РєРѕРІР°С‚СЊ Р°СЂС…РёРІ\n{message.Message}");
+                    toolStripStatusLabel1.Text = "РЈРґР°Р»РµРЅРёРµ РІСЂРµРјРµРЅРЅС‹С… С„Р°Р№Р»РѕРІ";
                     ClearDirectory(fileFolder);
                     ClearDirectory(temporaryFolder);
                     EnableButtons();
@@ -945,7 +945,7 @@ namespace WinFormsApp1
                     return;
                 }
 
-                toolStripStatusLabel1.Text = "Рашифровка файла";
+                toolStripStatusLabel1.Text = "Р Р°С€РёС„СЂРѕРІРєР° С„Р°Р№Р»Р°";
                 string? downloadedFile = string.Empty;
 
                 await Task.Run(() =>
@@ -957,7 +957,7 @@ namespace WinFormsApp1
                     downloadedFile = DecryptFile(fileToBeDecrypted, filePassword, iv, originalFileName);
                 });
 
-                toolStripStatusLabel1.Text = "Удаление временных файлов";
+                toolStripStatusLabel1.Text = "РЈРґР°Р»РµРЅРёРµ РІСЂРµРјРµРЅРЅС‹С… С„Р°Р№Р»РѕРІ";
                 ClearDirectory(fileFolder);
                 ClearDirectory(temporaryFolder);
                 EnableButtons();
@@ -998,20 +998,20 @@ namespace WinFormsApp1
         {
             if (string.IsNullOrEmpty(settings.AccessToken))
             {
-                ShowPopupErrorMessagebox("Ошибка VK API", "Невозможно удалить файл: не настроен токен доступа");
+                ShowPopupErrorMessagebox("РћС€РёР±РєР° VK API", "РќРµРІРѕР·РјРѕР¶РЅРѕ СѓРґР°Р»РёС‚СЊ С„Р°Р№Р»: РЅРµ РЅР°СЃС‚СЂРѕРµРЅ С‚РѕРєРµРЅ РґРѕСЃС‚СѓРїР°");
                 return;
             }
 
             if (settings.AskBeforeDelete)
             {
-                var result = MessageBox.Show("Вы уверены, что хотите удалить этот файл?", "Удаление файла", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                var result = MessageBox.Show("Р’С‹ СѓРІРµСЂРµРЅС‹, С‡С‚Рѕ С…РѕС‚РёС‚Рµ СѓРґР°Р»РёС‚СЊ СЌС‚РѕС‚ С„Р°Р№Р»?", "РЈРґР°Р»РµРЅРёРµ С„Р°Р№Р»Р°", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result == DialogResult.No)
                 {
                     return;
                 }
             }
 
-            var deleteStatus = $"Удаление файла {_selectedFile.NameAndSize}";
+            var deleteStatus = $"РЈРґР°Р»РµРЅРёРµ С„Р°Р№Р»Р° {_selectedFile.NameAndSize}";
             toolStripStatusLabel1.Text = deleteStatus;
             var filePartsLinks = GetLinksFromJson(_selectedFile.jsonPath);
             var counter = 1;
@@ -1248,7 +1248,7 @@ namespace WinFormsApp1
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (MessageBox.Show("Вы уверены, что хотите выйти?", "Подтвердите выход", MessageBoxButtons.YesNo) == DialogResult.No)
+            if (MessageBox.Show("Р’С‹ СѓРІРµСЂРµРЅС‹, С‡С‚Рѕ С…РѕС‚РёС‚Рµ РІС‹Р№С‚Рё?", "РџРѕРґС‚РІРµСЂРґРёС‚Рµ РІС‹С…РѕРґ", MessageBoxButtons.YesNo) == DialogResult.No)
             {
                 e.Cancel = true;
             }
