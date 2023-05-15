@@ -12,7 +12,7 @@ namespace WinFormsApp1
     internal class Settings
     {
         private int _aesPasswordLength = 32;
-        private int _chunkToUploadSize = 190;
+        private int _chunkToUploadSize = 190; // Ограничение VK API - 200 MB
 
         public int ChunkToUploadSize 
         { 
