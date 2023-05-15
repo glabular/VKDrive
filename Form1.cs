@@ -99,11 +99,9 @@ namespace WinFormsApp1
 
             var cloudFile = new CloudFile();
 
-            // Получить имя файла с расширением.
             var originalFileName = Path.GetFileName(file_path);
             cloudFile.Name = originalFileName;
 
-            // Вычислить размер файла
             var fileSize = string.Empty;
             await Task.Run(() =>
             {
@@ -111,8 +109,6 @@ namespace WinFormsApp1
             });
 
             cloudFile.Size = fileSize;
-
-            // Вычислить хэш-сумму SHA256 данного файла.
             toolStripStatusLabel1.Text = "Вычисление хэш-суммы";
             var sha256Checksum = string.Empty;
             await Task.Run(() =>
@@ -120,7 +116,6 @@ namespace WinFormsApp1
                 sha256Checksum = GetSHA256Checksum(file_path).ToLower();
             });
 
-            // Создать в системной папке программы папку с именем этой хэш-суммы
             var systemFolder = CreateSystemFolder(sha256Checksum);
 
             // Зашифровать файл
@@ -133,7 +128,6 @@ namespace WinFormsApp1
                 encryptedFilePath = EncryptFile(file_path, key, initVector);
             });
 
-            // Запаковать файл в архив.
             toolStripStatusLabel1.Text = "Архивирование файла";
             var uniqueName = $"{Guid.NewGuid()}";
             cloudFile.UniqueName = uniqueName;
@@ -144,10 +138,9 @@ namespace WinFormsApp1
                 CompressFile(encryptedFilePath, archivePath, archivePassword);
             });
 
-            // Удалить зашифрованный файл            
+            
             File.Delete(encryptedFilePath);
 
-            //Разделить архив на примерно равные части, но не более 190 МБ
             toolStripStatusLabel1.Text = "Разделение файла на части";
             var chunkSize = CalculateChunkSize(file_path, settings.ChunkToUploadSize);
 
@@ -156,19 +149,17 @@ namespace WinFormsApp1
                 SplitFile(archivePath, chunkSize, sha256Checksum);
             });
 
-            // Удалить архив
+
             if (File.Exists(archivePath))
             {
                 toolStripStatusLabel1.Text = "Удаление архива";
                 File.Delete(archivePath);
             }
 
-            // Получить список файлов для загрузки
             var filesPaths = Directory.GetFiles(systemFolder);
             filesPaths = SortFiles(filesPaths);
             var links = new List<string>();
 
-            // Загрузить файлы на сервер Вк
             var uploadingStatus = "Загрузка файлов на сервер ВК";
             toolStripStatusLabel1.Text = uploadingStatus;
             var uploadingFileCounter = 0;
@@ -204,7 +195,6 @@ namespace WinFormsApp1
                 }
             }
 
-            // Создать в системной папке программы JSON файл
             var jsonPath = Path.Combine(VKDriveFolder, $"{sha256Checksum}.json");
             CreateJsonFile(originalFileName, fileSize, key, initVector, archivePassword, links, jsonPath, uniqueName); // TODO: obscure method mane
 
@@ -215,7 +205,6 @@ namespace WinFormsApp1
             var jsonString = System.Text.Json.JsonSerializer.Serialize(_cloudFiles, new JsonSerializerOptions() { WriteIndented = true });
             File.WriteAllText(_jsonCloudFilesLocation, jsonString);
 
-            // Удалить все части файла
             var deletionStatus = "Удаление временных файлов";
             toolStripStatusLabel1.Text = deletionStatus;
             var di = new DirectoryInfo(systemFolder);
@@ -235,6 +224,7 @@ namespace WinFormsApp1
                 audio.Play();
             }
 
+
             // NB! Данный (UploadFileToVkAsync) метод не вызывает остановку прогресс бара в конце выполнения работы, т.к.
             // метод RefreshFileList вызывает остановку прогресс бара в конце выполнения своей работы.
 
@@ -243,6 +233,7 @@ namespace WinFormsApp1
 
         private void ShowCaptchaWindow(string requestToRepeat, string captchaSid, string captchaImgUrl, List<string> links)
         {
+            //Создать окно
             var captchaForm = new Form
             {
                 Width = 300,
@@ -484,22 +475,6 @@ namespace WinFormsApp1
 
         private async Task<string> UploadFileAsync(string file, string URL)
         {
-            //var act = "add_doc";
-            //var mid = "87588426";
-            //var aid = "-1";
-            //var gid = settings.GroupID;
-            //var type = "0";
-            //var hash = ExtractHash(URL);
-            //var rhash = ExtractRHash(URL);
-            //var api = "1";
-            //var interpolatedUrl = $"https://pu.vk.com/{ExtractCPart(URL)}/upload_doc.php?act={act}&mid={mid}&aid={aid}&gid={gid}&type={type}&hash={hash}&rhash={rhash}&api={api}";
-
-            //if (URL == interpolatedUrl)
-            //{
-            //    ShowPopupErrorMessagebox("No error!", "All good");
-            //}
-
-
             using var client = new HttpClient();
             client.Timeout = TimeSpan.FromSeconds(settings.HttpClientTimeout);
             using var request = new HttpRequestMessage(HttpMethod.Post, URL);
@@ -563,8 +538,6 @@ namespace WinFormsApp1
                 return endIndex == -1 ? url.Substring(startIndex) : url.Substring(startIndex, endIndex - startIndex);
             }
         }
-
-
 
         private async Task<string> GetUploadURLAsync()
         {
