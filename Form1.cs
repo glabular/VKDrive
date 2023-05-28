@@ -1,14 +1,11 @@
 ﻿using Ionic.Zip;
+using System.IO.Compression;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System;
 using System.Diagnostics;
 using System.Media;
 using System.Net;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.Arm;
 using System.Security.Cryptography;
-using System.Security.Policy;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -91,7 +88,7 @@ namespace WinFormsApp1
             RefreshFileList();
         }
 
-        private async Task UploadFileToVkAsync(string file_path)
+        private async Task UploadFileToVKDriveAsync(string file_path)
         {
             StartProgressBar();
             toolStripStatusLabel1.Text = "Загрузка файла в облако";
@@ -118,43 +115,41 @@ namespace WinFormsApp1
 
             var systemFolder = CreateSystemFolder(sha256Checksum);
 
-            // Зашифровать файл
+            toolStripStatusLabel1.Text = "Архивирование файла";
+            var uniqueName = $"{Guid.NewGuid()}";
+            cloudFile.UniqueName = uniqueName;
+            var outputArchive = Path.Combine(temporaryFolder, $"{uniqueName}.7z");
+            var archivePassword = GeneratePassword(settings.ArchivePasswordLength);
+            await Task.Run(() =>
+            {
+                CompressFile(file_path, outputArchive, archivePassword);
+            });
+
             toolStripStatusLabel1.Text = "Шифрование файла";
             var key = GenerateEncryptionKey(settings.AesPasswordLength);
             var initVector = GenerateEncryptionKey(16);
             var encryptedFilePath = string.Empty;
             await Task.Run(() =>
             {
-                encryptedFilePath = EncryptFile(file_path, key, initVector);
+                encryptedFilePath = EncryptFile(outputArchive, key, initVector);
             });
-
-            toolStripStatusLabel1.Text = "Архивирование файла";
-            var uniqueName = $"{Guid.NewGuid()}";
-            cloudFile.UniqueName = uniqueName;
-            var archivePath = Path.Combine(temporaryFolder, $"{uniqueName}.7z");
-            var archivePassword = GeneratePassword(settings.ArchivePasswordLength);
-            await Task.Run(() =>
-            {
-                CompressFile(encryptedFilePath, archivePath, archivePassword);
-            });
-
-            
-            File.Delete(encryptedFilePath);
 
             toolStripStatusLabel1.Text = "Разделение файла на части";
-            var chunkSize = CalculateChunkSize(file_path, settings.ChunkToUploadSize);
+            var chunkSize = CalculateChunkSize(encryptedFilePath, settings.ChunkToUploadSize);
 
             await Task.Run(() =>
             {
-                SplitFile(archivePath, chunkSize, sha256Checksum);
+                SplitFile(encryptedFilePath, chunkSize, sha256Checksum, uniqueName);
             });
 
 
-            if (File.Exists(archivePath))
+            if (File.Exists(outputArchive))
             {
                 toolStripStatusLabel1.Text = "Удаление архива";
-                File.Delete(archivePath);
+                File.Delete(outputArchive);
             }
+
+            File.Delete(encryptedFilePath);
 
             var filesPaths = Directory.GetFiles(systemFolder);
             filesPaths = SortFiles(filesPaths);
@@ -175,7 +170,7 @@ namespace WinFormsApp1
                 {
                     var rnd = new Random();
                     toolStripStatusLabel1.Text = "VK API rest, please wait...";
-                    await Task.Delay(rnd.Next(1000 * 60 * 5, 1000 * 60 * 8)); // Задержка, чтобы "успокоить" VK API...
+                    await Task.Delay(rnd.Next(1000 * 60 * 4, 1000 * 60 * 8)); // Задержка, чтобы "успокоить" VK API...
                 }
 
                 if (IsCaptchaNeeded(savedFileInfo))
@@ -196,7 +191,7 @@ namespace WinFormsApp1
             }
 
             var jsonPath = Path.Combine(VKDriveFolder, $"{sha256Checksum}.json");
-            CreateJsonFile(originalFileName, fileSize, key, initVector, archivePassword, links, jsonPath, uniqueName); // TODO: obscure method mane
+            CreateJsonFile(originalFileName, fileSize, key, initVector, archivePassword, links, jsonPath, uniqueName);
 
             cloudFile.jsonPath = jsonPath;
             cloudFile.CreationDate = DateTime.Now;
@@ -440,6 +435,27 @@ namespace WinFormsApp1
         public static string GeneratePassword(int length)
         {
             const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+[{]}|;:',<.>/?`~";
+            var password = new char[length];
+            var rng = RandomNumberGenerator.Create();
+            var buffer = new byte[sizeof(uint)];
+
+            for (int i = 0; i < length; i++)
+            {
+                rng.GetBytes(buffer);
+                uint randomIndex = BitConverter.ToUInt32(buffer, 0) % (uint)chars.Length;
+                password[i] = chars[(int)randomIndex];
+            }
+
+            return new string(password);
+        }
+
+        /// <summary>
+        /// The method was marked as obsolete because it uses the Random class, which is not secure 
+        /// for generating strong passwords. The Random class can produce predictable and repetitive patterns, 
+        /// making it vulnerable to attacks.         
+        public static string GeneratePasswordObsolete(int length)
+        {
+            const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+[{]}|;:',<.>/?`~";
             var random = new Random();
             var password = new char[length];
 
@@ -572,16 +588,15 @@ namespace WinFormsApp1
             return (chunkSizeBytes / 1024 / 1024) + 1;
         }
 
-        public void SplitFile(string fileToSplit, int chunkSizeMB, string sha256Checksum)
+        public void SplitFile(string fileToSplit, int chunkSizeMB, string sha256Checksum, string fileName)
         {
-            var fileName = Path.GetFileNameWithoutExtension(fileToSplit);
             var prefix = "0000";
             var bufferSize = 1024 * 1024 * chunkSizeMB;
             var index = 0;
             using var input = new FileStream(fileToSplit, FileMode.Open, FileAccess.Read);
 
             if (input.Length <= bufferSize)
-            {
+            {                
                 var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
                 File.Copy(fileToSplit, outputFile);
                 return;
@@ -591,7 +606,7 @@ namespace WinFormsApp1
 
             while (input.Position < input.Length)
             {
-                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
+                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");                
                 using var output = new FileStream(outputFile, FileMode.Create);
                 var remaining = bufferSize;
 
@@ -606,11 +621,11 @@ namespace WinFormsApp1
             }
         }
 
-        public void JoinParts(string partsPath, string restoredFilePath)
+        public void JoinParts(string partsPath, string assembledFilePath)
         {
             var notSorted = Directory.GetFiles(partsPath);
             var fileList = SortFiles(notSorted);
-            using var outfile = new FileStream(restoredFilePath, FileMode.Create);
+            using var outfile = new FileStream(assembledFilePath, FileMode.Create);
             foreach (var partFile in fileList)
             {
                 using var infile = new FileStream(partFile, FileMode.Open);
@@ -623,22 +638,11 @@ namespace WinFormsApp1
             var sortedFiles = arr.OrderBy(f => int.Parse(Regex.Match(f, @"-(\d+)\.vkd$").Groups[1].Value));
 
             return sortedFiles.ToArray();
-        }
-
-        private void CompressFile(string fileToCompress, string outputArchive, string password)
-        {
-            using var zip = new ZipFile();
-            zip.UseZip64WhenSaving = Zip64Option.Always;
-            zip.Encryption = EncryptionAlgorithm.WinZipAes256;
-            zip.Password = password;
-            zip.CompressionLevel = Ionic.Zlib.CompressionLevel.None;
-            zip.AddFile(fileToCompress, string.Empty);
-            zip.Save(outputArchive);
-        }
+        }       
 
         private static void DecompressFile(string archiveToDecompress, string outputFolder, string password)
         {
-            using var zip = ZipFile.Read(archiveToDecompress);
+            using var zip = Ionic.Zip.ZipFile.Read(archiveToDecompress);
             zip.Password = password;
             zip.ExtractExistingFile = ExtractExistingFileAction.OverwriteSilently;
             try
@@ -647,13 +651,28 @@ namespace WinFormsApp1
             }
             catch (BadPasswordException)
             {
-                MessageBox.Show("Неверный пароль от архива. Возможно, файл был повреждён или изменён", "Ошибка",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error,
-                        MessageBoxDefaultButton.Button1);
+                ShowPopupErrorMessagebox("Ошибка", "Неверный пароль от архива. Возможно, файл был повреждён или изменён");
+            }
+            catch(Exception e)
+            {
+                ShowPopupErrorMessagebox("Unknown error", e.Message);
             }
         }
 
+        private static void CompressFile(string fileToCompress, string outputArchive, string password)
+        {
+            using var zip = new Ionic.Zip.ZipFile()
+            {
+                UseZip64WhenSaving = Zip64Option.AsNecessary, // TODO always to check if it's working
+                Encryption = EncryptionAlgorithm.WinZipAes256,
+                Password = password,
+                CompressionLevel = Ionic.Zlib.CompressionLevel.BestCompression
+            };
+
+            zip.AddFile(fileToCompress, string.Empty);
+            zip.Save(outputArchive);
+        }
+                
         private string GetFileSize(string file_path)
         {
             string[] sizes = { "B", "KB", "MB", "GB", "TB" };
@@ -669,7 +688,7 @@ namespace WinFormsApp1
             // Adjust the format string to your preferences. For example "{0:0.#}{1}" would
             // show a single decimal place, and no space.
 
-            return string.Format("{0:0.##} {1}", len, sizes[order]); ;
+            return string.Format("{0:0.##} {1}", len, sizes[order]);
         }
 
         private static byte[] GenerateEncryptionKey(int size)
@@ -698,19 +717,19 @@ namespace WinFormsApp1
             return encryptedFilePath;
         }
 
-        private string DecryptFile(string encryptedFilePath, byte[] key, byte[] initializationVector, string originalFileName)
+        private static void DecryptFile(string encryptedFilePath, byte[] key, byte[] initializationVector, string decryptedOutputFile)
         {
             using var aes = System.Security.Cryptography.Aes.Create();
             aes.Key = key;
             aes.IV = initializationVector;
 
+            Directory.CreateDirectory(Path.GetDirectoryName(decryptedOutputFile));
+
             using var inputFile = File.OpenRead(encryptedFilePath);
-            using var outputFile = File.Create(Path.Combine(downloadedFolder, originalFileName));
+            using var outputFile = File.Create(decryptedOutputFile);
             using var decryptor = aes.CreateDecryptor();
             using var cryptoStream = new CryptoStream(inputFile, decryptor, CryptoStreamMode.Read);
             cryptoStream.CopyTo(outputFile);
-
-            return Path.Combine(downloadedFolder, originalFileName);
         }
 
         /// <summary>
@@ -829,7 +848,7 @@ namespace WinFormsApp1
                     return;
                 }
 
-                await UploadFileToVkAsync(selectedFileName);
+                await UploadFileToVKDriveAsync(selectedFileName);
             }
         }
 
@@ -909,53 +928,32 @@ namespace WinFormsApp1
                     counter++;
                 }
 
-                var restoredArchive = Path.Combine(temporaryFolder, "restored.7z");
-                var tempFolderForDecompressedFile = Path.Combine(temporaryFolder, Guid.NewGuid().ToString());
+                var toBeDecrypted = Path.Combine(temporaryFolder, "ToBeDecrypted.tmp");
+                var encryptedArchivePath = Path.Combine(temporaryFolder, "EncryptedArchive.zip");
 
                 ChangeStatusbarText("Объединение частей файла");
 
                 await Task.Run(() =>
                 {
-                    JoinParts(fileFolder, restoredArchive);
+                    JoinParts(fileFolder, toBeDecrypted);
+                });
+
+                toolStripStatusLabel1.Text = "Рашифровка файла";
+
+                var originalFileName = GetValueFromJsonAsync(_selectedFile.jsonPath, "OriginalName");
+                await Task.Run(() =>
+                {
+                    var filePassword = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "FilePassword"));
+                    var iv = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "InitializationVector"));                    
+                    DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
                 });
 
                 toolStripStatusLabel1.Text = "Распаковка архива";
                 await Task.Run(() =>
                 {
-                    DecompressFile(restoredArchive, tempFolderForDecompressedFile, GetValueFromJsonAsync(_selectedFile.jsonPath, "ArchivePassword"));
+                    DecompressFile(encryptedArchivePath, downloadedFolder, GetValueFromJsonAsync(_selectedFile.jsonPath, "ArchivePassword"));
                 });
-
-                string? fileToBeDecrypted = string.Empty;
-
-                try
-                {
-                    fileToBeDecrypted = Directory.GetFiles(tempFolderForDecompressedFile)[0];
-                }
-                catch (System.IO.DirectoryNotFoundException message)
-                {
-                    ShowPopupErrorMessagebox("Ошибка", $"Не удалось распаковать архив\n{message.Message}");
-                    toolStripStatusLabel1.Text = "Удаление временных файлов";
-                    ClearDirectory(fileFolder);
-                    ClearDirectory(temporaryFolder);
-                    EnableButtons();
-                    StopProgressBar();
-
-                    toolStripStatusLabel1.Text = statusbarLabelDefaultText;
-
-                    return;
-                }
-
-                toolStripStatusLabel1.Text = "Рашифровка файла";
-                string? downloadedFile = string.Empty;
-
-                await Task.Run(() =>
-                {
-                    var filePassword = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "FilePassword"));
-                    var iv = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "InitializationVector"));
-                    var originalFileName = GetValueFromJsonAsync(_selectedFile.jsonPath, "OriginalName");
-
-                    downloadedFile = DecryptFile(fileToBeDecrypted, filePassword, iv, originalFileName);
-                });
+              
 
                 toolStripStatusLabel1.Text = "Удаление временных файлов";
                 ClearDirectory(fileFolder);
@@ -966,7 +964,7 @@ namespace WinFormsApp1
 
                 if (settings.OpenFolderAfterDownload)
                 {
-                    var path = downloadedFile;
+                    var path = Path.Combine(temporaryFolder, _selectedFile.UniqueName);
                     var argument = "/select, \"" + path + "\"";
                     Process.Start("explorer.exe", argument);
                 }
@@ -1236,7 +1234,7 @@ namespace WinFormsApp1
             Activate();
             var droppedFilePath = GetFilePath(e);
 
-            await UploadFileToVkAsync(droppedFilePath);
+            await UploadFileToVKDriveAsync(droppedFilePath);
         }
 
         private string GetFilePath(DragEventArgs e)
