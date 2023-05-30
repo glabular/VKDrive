@@ -140,6 +140,7 @@
             toolStripProgressBar1.Name = "toolStripProgressBar1";
             toolStripProgressBar1.Size = new Size(100, 16);
             toolStripProgressBar1.Step = 1;
+            toolStripProgressBar1.Click += toolStripProgressBar1_Click;
             // 
             // toolStripStatusLabel1
             // 

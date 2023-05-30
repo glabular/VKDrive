@@ -25,6 +25,7 @@ namespace WinFormsApp1
         private List<CloudFile> _cloudFiles;
         private Settings settings;
         private CloudFile _selectedFile;
+        private int _easterEggClicksCounter;
         //[DllImport("kernel32.dll")] // Enable console
         //static extern bool AllocConsole();// Enable console
 
@@ -71,7 +72,7 @@ namespace WinFormsApp1
                 }
             }
 
-            SetPriority(settings.ProcessPriority);
+            SetPriority();
 
             InitializeComponent();
             listBox1.DataSource = _cloudFiles;
@@ -119,7 +120,13 @@ namespace WinFormsApp1
             var uniqueName = $"{Guid.NewGuid()}";
             cloudFile.UniqueName = uniqueName;
             var outputArchive = Path.Combine(temporaryFolder, $"{uniqueName}.7z");
-            var archivePassword = GeneratePassword(settings.ArchivePasswordLength);
+
+            var archivePassword = string.Empty;
+            await Task.Run(() =>
+            {
+                archivePassword = GeneratePassword(settings.ArchivePasswordLength);
+            });
+
             await Task.Run(() =>
             {
                 CompressFile(file_path, outputArchive, archivePassword);
@@ -596,7 +603,7 @@ namespace WinFormsApp1
             using var input = new FileStream(fileToSplit, FileMode.Open, FileAccess.Read);
 
             if (input.Length <= bufferSize)
-            {                
+            {
                 var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
                 File.Copy(fileToSplit, outputFile);
                 return;
@@ -606,7 +613,7 @@ namespace WinFormsApp1
 
             while (input.Position < input.Length)
             {
-                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");                
+                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
                 using var output = new FileStream(outputFile, FileMode.Create);
                 var remaining = bufferSize;
 
@@ -638,7 +645,7 @@ namespace WinFormsApp1
             var sortedFiles = arr.OrderBy(f => int.Parse(Regex.Match(f, @"-(\d+)\.vkd$").Groups[1].Value));
 
             return sortedFiles.ToArray();
-        }       
+        }
 
         private static void DecompressFile(string archiveToDecompress, string outputFolder, string password)
         {
@@ -653,9 +660,9 @@ namespace WinFormsApp1
             {
                 ShowPopupErrorMessagebox("Ошибка", "Неверный пароль от архива. Возможно, файл был повреждён или изменён");
             }
-            catch(Exception e)
+            catch (IOException e)
             {
-                ShowPopupErrorMessagebox("Unknown error", e.Message);
+                ShowPopupErrorMessagebox("I/O exception", e.Message);
             }
         }
 
@@ -663,16 +670,18 @@ namespace WinFormsApp1
         {
             using var zip = new Ionic.Zip.ZipFile()
             {
-                UseZip64WhenSaving = Zip64Option.AsNecessary, // TODO always to check if it's working
+                UseZip64WhenSaving = Zip64Option.Always,
                 Encryption = EncryptionAlgorithm.WinZipAes256,
                 Password = password,
-                CompressionLevel = Ionic.Zlib.CompressionLevel.BestCompression
+                CompressionLevel = Ionic.Zlib.CompressionLevel.BestCompression,
+                AlternateEncoding = Encoding.UTF8,
+                AlternateEncodingUsage = ZipOption.AsNecessary
             };
 
             zip.AddFile(fileToCompress, string.Empty);
             zip.Save(outputArchive);
         }
-                
+
         private string GetFileSize(string file_path)
         {
             string[] sizes = { "B", "KB", "MB", "GB", "TB" };
@@ -796,7 +805,7 @@ namespace WinFormsApp1
             return path;
         }
 
-        public string GetSHA256Checksum(string path)
+        public static string GetSHA256Checksum(string path)
         {
             try
             {
@@ -944,7 +953,7 @@ namespace WinFormsApp1
                 await Task.Run(() =>
                 {
                     var filePassword = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "FilePassword"));
-                    var iv = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "InitializationVector"));                    
+                    var iv = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "InitializationVector"));
                     DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
                 });
 
@@ -953,7 +962,6 @@ namespace WinFormsApp1
                 {
                     DecompressFile(encryptedArchivePath, downloadedFolder, GetValueFromJsonAsync(_selectedFile.jsonPath, "ArchivePassword"));
                 });
-              
 
                 toolStripStatusLabel1.Text = "Удаление временных файлов";
                 ClearDirectory(fileFolder);
@@ -964,7 +972,7 @@ namespace WinFormsApp1
 
                 if (settings.OpenFolderAfterDownload)
                 {
-                    var path = Path.Combine(temporaryFolder, _selectedFile.UniqueName);
+                    var path = Path.Combine(downloadedFolder, _selectedFile.Name);
                     var argument = "/select, \"" + path + "\"";
                     Process.Start("explorer.exe", argument);
                 }
@@ -1136,7 +1144,7 @@ namespace WinFormsApp1
             if (settingsForm.ShowDialog() == DialogResult.OK)
             {
                 settings = settingsForm._settings;
-                SetPriority(settings.ProcessPriority);
+                SetPriority();
                 var jsonOptions = new JsonSerializerOptions()
                 {
                     WriteIndented = true,
@@ -1164,7 +1172,7 @@ namespace WinFormsApp1
         }
 
 
-        private void SetPriority(ProcessPriorityClass priority)
+        private void SetPriority()
         {
             Process.GetCurrentProcess().PriorityClass = settings.ProcessPriority;
             if (settings.ProcessPriority == ProcessPriorityClass.BelowNormal)
@@ -1250,6 +1258,22 @@ namespace WinFormsApp1
             {
                 e.Cancel = true;
             }
+        }
+
+        private void toolStripProgressBar1_Click(object sender, EventArgs e)
+        {
+            _easterEggClicksCounter++;
+
+            if (_easterEggClicksCounter == 10)
+            {
+                ShowEasterEgg();
+                _easterEggClicksCounter = 0;
+            }
+        }
+
+        private static void ShowEasterEgg()
+        {
+            MessageBox.Show("Congratulations! You found the Easter egg!", "Easter Egg", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }
