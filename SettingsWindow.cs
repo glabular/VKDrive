@@ -9,7 +9,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Ionic.Zlib;
-
+using Newtonsoft.Json.Linq;
+using VKDrive;
 
 namespace WinFormsApp1
 {
@@ -36,6 +37,38 @@ namespace WinFormsApp1
             checkBoxOpenFolderAfterLoad.Checked = _settings.OpenFolderAfterDownload;
             radioBtnSortByName.Checked = _settings.SortByName;
             radioBtnSortByDate.Checked = _settings.SortByDate;
+
+            comboBoxCompressionLvl.DropDownStyle = ComboBoxStyle.DropDownList;
+            PopulateCompressionLevelCombobox();
+            comboBoxCompressionLvl.SelectedIndex = GetSelectedIndex(_settings.CompressionLevel);
+        }
+
+        private void PopulateCompressionLevelCombobox()
+        {
+            var levels = new string[4]
+            {
+                "Без сжатия",
+                "Минимальная",
+                "Обычная",
+                "Максимальная"
+            };
+
+            foreach (var value in levels)
+            {
+                comboBoxCompressionLvl.Items.Add(value);
+            }
+        }
+
+        private int GetSelectedIndex(MyCompressionLevels level)
+        {
+            return level switch
+            {
+                MyCompressionLevels.None => 0,
+                MyCompressionLevels.Minimum => 1,
+                MyCompressionLevels.Default => 2,
+                MyCompressionLevels.Best => 3,
+                _ => 404,
+            };
         }
 
         private void applyButton_Click(object sender, EventArgs e)
@@ -182,6 +215,23 @@ namespace WinFormsApp1
         private void radioBtnSortByDate_CheckedChanged(object sender, EventArgs e)
         {
             _settings.SortByDate = radioBtnSortByDate.Checked;
+        }
+
+        private void comboBoxCompressionLvl_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            var selectedIndex = comboBoxCompressionLvl.SelectedIndex;
+            var selectedLevel = (MyCompressionLevels)selectedIndex;
+            _settings.CompressionLevel = selectedLevel;
+        }
+
+        private void comboBoxCompressionLvl_MouseHover(object sender, EventArgs e)
+        {
+            var toolTip = new System.Windows.Forms.ToolTip();
+            toolTip.AutoPopDelay = 2000;
+            toolTip.InitialDelay = 100;
+
+            toolTip.SetToolTip(comboBoxCompressionLvl, "Без сжатия: Файлы отправляются без сжатия.\r\nМинимальное: Сжатие файлов на минимальном уровне.\r\nСтандартное: Используется уровень сжатия по умолчанию.\r\nМаксимальное: Файлы сжимаются с максимально возможным уровнем сжатия.");
+
         }
     }
 }

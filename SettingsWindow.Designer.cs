@@ -404,12 +404,13 @@
             // 
             // comboBoxCompressionLvl
             // 
-            comboBoxCompressionLvl.Enabled = false;
             comboBoxCompressionLvl.FormattingEnabled = true;
             comboBoxCompressionLvl.Location = new Point(179, 52);
             comboBoxCompressionLvl.Name = "comboBoxCompressionLvl";
             comboBoxCompressionLvl.Size = new Size(121, 23);
             comboBoxCompressionLvl.TabIndex = 4;
+            comboBoxCompressionLvl.SelectedIndexChanged += comboBoxCompressionLvl_SelectedIndexChanged;
+            comboBoxCompressionLvl.MouseHover += comboBoxCompressionLvl_MouseHover;
             // 
             // SettingsWindow
             // 

@@ -11,15 +11,17 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VKDrive;
+using System.Windows.Forms;
 
 namespace WinFormsApp1
 {
     public partial class Form1 : Form
     {
         private readonly string statusbarLabelDefaultText = "Готово";
-        private readonly string VKDriveFolder = @"D:\VKDrive";
-        private readonly string temporaryFolder = @"D:\VKDrive\tmp";
-        private readonly string downloadedFolder = @"D:\VKDrive\Downloaded";
+        private readonly string VKDriveFolder = @"C:\VKDrive"; // TODO
+        private readonly string temporaryFolder = @"C:\VKDrive\tmp"; // TODO
+        private readonly string downloadedFolder = @"C:\VKDrive\Downloaded";// TODO
         private string _jsonSettingsLocation;
         private string _jsonCloudFilesLocation;
         private List<CloudFile> _cloudFiles;
@@ -149,7 +151,6 @@ namespace WinFormsApp1
                 SplitFile(encryptedFilePath, chunkSize, sha256Checksum, uniqueName);
             });
 
-
             if (File.Exists(outputArchive))
             {
                 toolStripStatusLabel1.Text = "Удаление архива";
@@ -226,7 +227,6 @@ namespace WinFormsApp1
                 audio.Play();
             }
 
-
             // NB! Данный (UploadFileToVkAsync) метод не вызывает остановку прогресс бара в конце выполнения работы, т.к.
             // метод RefreshFileList вызывает остановку прогресс бара в конце выполнения своей работы.
 
@@ -273,7 +273,6 @@ namespace WinFormsApp1
             submitButton.Click += async (sender, e) =>
             {
                 captchaInput = captchaTextBox.Text;
-
 
                 var json = JsonObject.Parse(requestToRepeat);
                 var fileInfo = json["file"].ToString();
@@ -416,15 +415,7 @@ namespace WinFormsApp1
             }
 
             return byteList.ToArray();
-        }
-
-        private string GetValueFromJsonAsync(string jsonFile, string key)
-        {
-            var jsonText = File.ReadAllText(jsonFile);
-            dynamic jsonData = JsonConvert.DeserializeObject(jsonText);
-
-            return jsonData[key];
-        }
+        }        
 
         private List<string> GetLinksFromJson(string jsonFile)
         {
@@ -454,25 +445,7 @@ namespace WinFormsApp1
             }
 
             return new string(password);
-        }
-
-        /// <summary>
-        /// The method was marked as obsolete because it uses the Random class, which is not secure 
-        /// for generating strong passwords. The Random class can produce predictable and repetitive patterns, 
-        /// making it vulnerable to attacks.         
-        public static string GeneratePasswordObsolete(int length)
-        {
-            const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+[{]}|;:',<.>/?`~";
-            var random = new Random();
-            var password = new char[length];
-
-            for (int i = 0; i < length; i++)
-            {
-                password[i] = chars[random.Next(chars.Length)];
-            }
-
-            return new string(password);
-        }
+        }        
 
         private async Task<string> SaveFileOnServer(string uploadedFileInfo)
         {
@@ -533,8 +506,6 @@ namespace WinFormsApp1
                 }
             }
 
-            Console.WriteLine($"UploadFileAsync\nresponseBody = {responseBody}");
-
             return responseBody;
 
             string? ExtractCPart(string URL)
@@ -575,8 +546,7 @@ namespace WinFormsApp1
             };
 
             request.Content = content;
-            var response = await client.SendAsync(request);
-            Console.WriteLine($"GetUploadURL.\nResponse = {response.StatusCode}: ReasonPhrase = {response.ReasonPhrase}");
+            var response = await client.SendAsync(request);            
             response.EnsureSuccessStatusCode();
             var responseBody = await response.Content.ReadAsStringAsync();
             var json = JsonObject.Parse(responseBody);
@@ -666,20 +636,35 @@ namespace WinFormsApp1
             }
         }
 
-        private static void CompressFile(string fileToCompress, string outputArchive, string password)
+        private void CompressFile(string fileToCompress, string outputArchive, string password)
         {
+            var level = GetCompressionLevel();
             using var zip = new Ionic.Zip.ZipFile()
             {
                 UseZip64WhenSaving = Zip64Option.Always,
                 Encryption = EncryptionAlgorithm.WinZipAes256,
                 Password = password,
-                CompressionLevel = Ionic.Zlib.CompressionLevel.BestCompression,
+                CompressionLevel = level,
                 AlternateEncoding = Encoding.UTF8,
                 AlternateEncodingUsage = ZipOption.AsNecessary
             };
 
             zip.AddFile(fileToCompress, string.Empty);
             zip.Save(outputArchive);
+
+            Ionic.Zlib.CompressionLevel GetCompressionLevel()
+            {
+                MyCompressionLevels selectedLevel = settings.CompressionLevel;
+
+                return selectedLevel switch
+                {
+                    MyCompressionLevels.None => Ionic.Zlib.CompressionLevel.None,
+                    MyCompressionLevels.Minimum => Ionic.Zlib.CompressionLevel.Level3,
+                    MyCompressionLevels.Default => Ionic.Zlib.CompressionLevel.Default,
+                    MyCompressionLevels.Best => Ionic.Zlib.CompressionLevel.BestCompression,
+                    _ => throw new ArgumentException("Invalid compression level"),
+                };
+            }
         }
 
         private string GetFileSize(string file_path)
@@ -949,18 +934,22 @@ namespace WinFormsApp1
 
                 toolStripStatusLabel1.Text = "Рашифровка файла";
 
-                var originalFileName = GetValueFromJsonAsync(_selectedFile.jsonPath, "OriginalName");
+                var jsonText = File.ReadAllText(_selectedFile.jsonPath);
+                dynamic jsonData = JsonConvert.DeserializeObject(jsonText);
+
+
+                var originalFileName = jsonData["OriginalName"];
                 await Task.Run(() =>
                 {
-                    var filePassword = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "FilePassword"));
-                    var iv = StringToByte(GetValueFromJsonAsync(_selectedFile.jsonPath, "InitializationVector"));
+                    var filePassword = StringToByte((string)jsonData["FilePassword"]);
+                    var iv = StringToByte((string)jsonData["InitializationVector"]);
                     DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
                 });
 
                 toolStripStatusLabel1.Text = "Распаковка архива";
                 await Task.Run(() =>
                 {
-                    DecompressFile(encryptedArchivePath, downloadedFolder, GetValueFromJsonAsync(_selectedFile.jsonPath, "ArchivePassword"));
+                    DecompressFile(encryptedArchivePath, downloadedFolder, (string)jsonData["ArchivePassword"]);
                 });
 
                 toolStripStatusLabel1.Text = "Удаление временных файлов";
