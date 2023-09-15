@@ -17,6 +17,7 @@ namespace WinFormsApp1
     public partial class SettingsWindow : Form
     {
         internal Settings _settings;
+        private bool _hasCheckboxValueChanged = false;
 
         internal SettingsWindow(Settings settings)
         {
@@ -37,6 +38,7 @@ namespace WinFormsApp1
             checkBoxOpenFolderAfterLoad.Checked = _settings.OpenFolderAfterDownload;
             radioBtnSortByName.Checked = _settings.SortByName;
             radioBtnSortByDate.Checked = _settings.SortByDate;
+            checkBoxEnableConsole.Checked = _settings.EnableConsole;
 
             comboBoxCompressionLvl.DropDownStyle = ComboBoxStyle.DropDownList;
             PopulateCompressionLevelCombobox();
@@ -75,6 +77,11 @@ namespace WinFormsApp1
         {
             DialogResult = DialogResult.OK;
             Close();
+
+            if (_hasCheckboxValueChanged && _settings.EnableConsole)
+            {
+                MessageBox.Show("Для применения изменений необходимо перезапустить программу", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }            
         }
 
         private void cancelButton_Click(object sender, EventArgs e)
@@ -229,9 +236,13 @@ namespace WinFormsApp1
             var toolTip = new System.Windows.Forms.ToolTip();
             toolTip.AutoPopDelay = 2000;
             toolTip.InitialDelay = 100;
-
             toolTip.SetToolTip(comboBoxCompressionLvl, "Без сжатия: Файлы отправляются без сжатия.\r\nМинимальное: Сжатие файлов на минимальном уровне.\r\nСтандартное: Используется уровень сжатия по умолчанию.\r\nМаксимальное: Файлы сжимаются с максимально возможным уровнем сжатия.");
+        }
 
+        private void checkBoxEnableConsole_CheckedChanged(object sender, EventArgs e)
+        {
+            _settings.EnableConsole = checkBoxEnableConsole.Checked;
+            _hasCheckboxValueChanged = true;
         }
     }
 }

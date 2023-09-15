@@ -15,7 +15,6 @@ namespace WinFormsApp1
         private int _chunkToUploadSize = 190; // Ограничение VK API - 200 MB
         private int _groupID = 39530977;
 
-
         public int AesPasswordLength
         {
             get => _aesPasswordLength;
@@ -70,5 +69,7 @@ namespace WinFormsApp1
         public bool SortByName { get; set; } = true;
 
         public bool SortByDate { get; set; }
+
+        public bool EnableConsole { get; set; } = false;
     }
 }

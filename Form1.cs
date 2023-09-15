@@ -12,28 +12,30 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VKDrive;
-using System.Windows.Forms;
+using System.Runtime.InteropServices;
 
 namespace WinFormsApp1
 {
     public partial class Form1 : Form
     {
         private readonly string statusbarLabelDefaultText = "Готово";
-        private readonly string VKDriveFolder = @"C:\VKDrive"; // TODO
-        private readonly string temporaryFolder = @"C:\VKDrive\tmp"; // TODO
-        private readonly string downloadedFolder = @"C:\VKDrive\Downloaded";// TODO
+        private readonly string VKDriveFolder = @"D:\VKDrive"; // TODO
+        private readonly string temporaryFolder = @"D:\VKDrive\tmp"; // TODO
+        private readonly string downloadedFolder = @"D:\VKDrive\Downloaded";// TODO
         private string _jsonSettingsLocation;
         private string _jsonCloudFilesLocation;
         private List<CloudFile> _cloudFiles;
         private Settings settings;
         private CloudFile _selectedFile;
         private int _easterEggClicksCounter;
-        //[DllImport("kernel32.dll")] // Enable console
-        //static extern bool AllocConsole();// Enable console
+        private string _uploadFileErrorCode = Guid.NewGuid().ToString();
+        [DllImport("kernel32.dll")]
+        static extern bool AllocConsole();// Enable console
+        [DllImport("kernel32.dll")]
+        static extern bool FreeConsole();
 
         public Form1()
         {
-            //AllocConsole(); // Enable console
             EnsureSystemFoldersExist();
             var folderName = "VKDrive";
             var userFolderPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -44,7 +46,7 @@ namespace WinFormsApp1
             if (!Directory.Exists(appFolderPath))
             {
                 Directory.CreateDirectory(appFolderPath);
-            }
+            }            
 
             if (File.Exists(_jsonSettingsLocation))
             {
@@ -61,6 +63,11 @@ namespace WinFormsApp1
                 };
                 var jsonString = System.Text.Json.JsonSerializer.Serialize(settings, jsonOptions);
                 File.WriteAllText(_jsonSettingsLocation, jsonString);
+            }
+
+            if (settings.EnableConsole)
+            {
+                AllocConsole();
             }
 
             _cloudFiles = new List<CloudFile>();
@@ -89,9 +96,172 @@ namespace WinFormsApp1
             listBox1.AllowDrop = true;
 
             RefreshFileList();
+
+            ConsoleOutput("The program successfully loaded.");
         }
 
-        private async Task UploadFileToVKDriveAsync(string file_path)
+        private async Task UploadFolderToVKDriveAsync(string folderPath)
+        {
+            ConsoleOutput($"Preparing to upload folder: {folderPath}");
+            StartProgressBar();
+            DisableButtons();
+            var checksumTask = Task.Run(() => GetFolderSHA256Checksum(folderPath).ToLower());
+            ConsoleOutput($"Calculating the folder checksum");
+            var cloudFile = new CloudFile();
+            var uniqueName = $"{Guid.NewGuid()}";
+            ConsoleOutput($"Unique name is set: {uniqueName}");
+            cloudFile.IsFolder = true;
+            var originalFileName = $"📁{Path.GetFileName(folderPath)}";
+            cloudFile.Name = originalFileName;
+            var folderSize = await GetFolderSize(folderPath);
+            ConsoleOutput($"Folder size calculated: {folderSize}");
+                        
+            var archivePassword = string.Empty;
+            await Task.Run(() =>
+            {
+                archivePassword = GeneratePassword(settings.ArchivePasswordLength);
+            });
+            ConsoleOutput($"Archive password is generated.");
+
+            var archivePath = Path.Combine(@"D:\ArchivesTEMP", $"{Guid.NewGuid()}.7z");
+
+            ConsoleOutput($"Compressing the folder.");
+            toolStripStatusLabel1.Text = "Сжатие папки";
+            await CompressFolder(folderPath, archivePath, archivePassword);
+            ConsoleOutput($"The folder is compressed.");
+
+            ConsoleOutput($"Encrypting the folder.");
+            toolStripStatusLabel1.Text = "Шифрование файла";
+            var encryptedFilePath = string.Empty;
+            var keyTask = Task.Run(() => GenerateEncryptionKey(settings.AesPasswordLength));
+            var initVectorTask = Task.Run(() => GenerateEncryptionKey(16));
+
+            await Task.WhenAll(keyTask, initVectorTask);
+            ConsoleOutput($"The initialization vector and the encryption key are generated.");
+
+            var key = keyTask.Result;
+            var initVector = initVectorTask.Result;
+
+            await Task.Run(() =>
+            {
+                encryptedFilePath = EncryptFile(archivePath, key, initVector);
+            });
+            ConsoleOutput($"The folder encrypted.");
+
+            ConsoleOutput($"The chunk size is being calculated.");
+
+            var chunkSize = 0;
+            await Task.Run(() =>
+            {
+                chunkSize = CalculateChunkSize(encryptedFilePath, settings.ChunkToUploadSize);
+            });            
+
+            var sha256Checksum = await checksumTask;
+            ConsoleOutput($"The folder checksum is calculated: {sha256Checksum}");
+            var systemFolder = CreateSystemFolder(sha256Checksum);
+            ConsoleOutput($"The system folder created.");
+
+            toolStripStatusLabel1.Text = "Разделение файла на части";
+            ConsoleOutput($"The folder is being split into {chunkSize}MB chunks.");
+            await Task.Run(() =>
+            {
+                SplitFile(encryptedFilePath, chunkSize, sha256Checksum, uniqueName);
+            });
+
+            if (File.Exists(archivePath))
+            {
+                toolStripStatusLabel1.Text = "Удаление архива";
+                File.Delete(archivePath);
+                ConsoleOutput($"The temporary archive deleted: {archivePath}");
+            }
+
+            File.Delete(encryptedFilePath);
+            ConsoleOutput($"The encrypted file deleted: {encryptedFilePath}");
+
+            var filesPaths = Directory.GetFiles(systemFolder);
+            filesPaths = SortFiles(filesPaths);
+            var links = new List<string>();
+
+            var uploadingStatus = "Загрузка папки на сервер ВК";
+            toolStripStatusLabel1.Text = uploadingStatus;
+            var uploadingFileCounter = 0;
+            ConsoleOutput($"The folder is being uploaded on VK server");
+
+            foreach (var file in filesPaths)
+            {
+                uploadingFileCounter++;
+                toolStripStatusLabel1.Text = $"{uploadingStatus}: {uploadingFileCounter}/{filesPaths.Length}";
+                var currentURL = await GetUploadURLAsync();
+                ConsoleOutput($"Got upload URL for {file}.");
+                var uploadedFileInfo = await UploadFileAsync(file, currentURL.ToString());
+                ConsoleOutput($"{file} has been uploaded.");
+                var savedFileInfo = await SaveFileOnServer(uploadedFileInfo);
+                ConsoleOutput($"{file} has been saved on the server.");
+                if (uploadingFileCounter % 5 == 0)
+                {
+                    var rnd = new Random();
+                    var restTime = rnd.Next(1000 * 60 * 4, 1000 * 60 * 8);
+                    toolStripStatusLabel1.Text = "VK API rest, please wait...";
+                    await Task.Delay(restTime); // Задержка, чтобы "успокоить" VK API...
+                    ConsoleOutput($"API rest not to abuse VK API for {restTime / 1000} seconds");
+                }
+
+                if (IsCaptchaNeeded(savedFileInfo))
+                {
+                    ConsoleOutput($"VK API requested captcha.");
+                    var captchaSid = GetCaptchaSID(savedFileInfo);
+                    ConsoleOutput($"Captcha sID: {captchaSid}");
+                    var captchaImgUrl = GetCaptchaImgUrl(savedFileInfo);
+                    SystemSounds.Exclamation.Play();
+                    ShowCaptchaWindow(uploadedFileInfo, captchaSid, captchaImgUrl, links);
+
+                    continue;
+                }
+                else
+                {
+                    var json = JsonObject.Parse(savedFileInfo);
+                    var URLToDownloadFile = json["response"]["doc"]["url"].ToString();
+                    links.Add(URLToDownloadFile);
+                }
+            }
+
+            var jsonPath = Path.Combine(VKDriveFolder, $"{sha256Checksum}.json");
+            CreateJsonFile(originalFileName, folderSize, key, initVector, archivePassword, links, jsonPath, uniqueName);
+            ConsoleOutput($"System JSON file created: {jsonPath}");
+
+            cloudFile.Size = folderSize;
+            cloudFile.jsonPath = jsonPath;
+            cloudFile.CreationDate = DateTime.Now;
+            _cloudFiles.Add(cloudFile);
+
+            var jsonString = System.Text.Json.JsonSerializer.Serialize(_cloudFiles, new JsonSerializerOptions() { WriteIndented = true });
+            File.WriteAllText(_jsonCloudFilesLocation, jsonString);
+            ConsoleOutput($"JSON files list updated: {_jsonCloudFilesLocation}");
+
+            var deletionStatus = "Удаление временных файлов";
+            toolStripStatusLabel1.Text = deletionStatus;
+            var di = new DirectoryInfo(systemFolder);
+            var tempFilesCounter = 1;
+            var tempFiles = di.GetFiles();
+
+            foreach (var file in tempFiles)
+            {
+                toolStripStatusLabel1.Text = $"{deletionStatus}: {tempFilesCounter}/{tempFiles.Length}";
+                file.Delete();
+                ConsoleOutput($"Temporary file deleted: {file}");
+                tempFilesCounter++;
+            }
+
+            if (settings.SoundsOn)
+            {
+                var audio = new SoundPlayer(VKDrive.Properties.Resources.Speech_On);
+                audio.Play();
+            }
+
+            await RefreshFileList();
+        }
+
+        private async Task UploadFileToVKDriveAsync(string filePath)
         {
             StartProgressBar();
             toolStripStatusLabel1.Text = "Загрузка файла в облако";
@@ -99,24 +269,13 @@ namespace WinFormsApp1
 
             var cloudFile = new CloudFile();
 
-            var originalFileName = Path.GetFileName(file_path);
+            var originalFileName = Path.GetFileName(filePath);
             cloudFile.Name = originalFileName;
+            Console.WriteLine($"Uploading {originalFileName}");
 
             var fileSize = string.Empty;
-            await Task.Run(() =>
-            {
-                fileSize = GetFileSize(file_path);
-            });
-
-            cloudFile.Size = fileSize;
-            toolStripStatusLabel1.Text = "Вычисление хэш-суммы";
-            var sha256Checksum = string.Empty;
-            await Task.Run(() =>
-            {
-                sha256Checksum = GetSHA256Checksum(file_path).ToLower();
-            });
-
-            var systemFolder = CreateSystemFolder(sha256Checksum);
+            var fileSizeTask = Task.Run(() => GetFileSize(filePath));
+            var checksumTask = Task.Run(() => GetFileSHA256Checksum(filePath).ToLower());
 
             toolStripStatusLabel1.Text = "Архивирование файла";
             var uniqueName = $"{Guid.NewGuid()}";
@@ -131,21 +290,36 @@ namespace WinFormsApp1
 
             await Task.Run(() =>
             {
-                CompressFile(file_path, outputArchive, archivePassword);
+                CompressFile(filePath, outputArchive, archivePassword);
             });
 
             toolStripStatusLabel1.Text = "Шифрование файла";
-            var key = GenerateEncryptionKey(settings.AesPasswordLength);
-            var initVector = GenerateEncryptionKey(16);
             var encryptedFilePath = string.Empty;
+            var keyTask = Task.Run(() => GenerateEncryptionKey(settings.AesPasswordLength));
+            var initVectorTask = Task.Run(() => GenerateEncryptionKey(16));
+
+            await Task.WhenAll(keyTask, initVectorTask);
+
+            var key = keyTask.Result;
+            var initVector = initVectorTask.Result;
+
             await Task.Run(() =>
             {
                 encryptedFilePath = EncryptFile(outputArchive, key, initVector);
             });
 
-            toolStripStatusLabel1.Text = "Разделение файла на части";
-            var chunkSize = CalculateChunkSize(encryptedFilePath, settings.ChunkToUploadSize);
+            var chunkSize = 0;
+            await Task.Run(() =>
+            {
+                chunkSize = CalculateChunkSize(encryptedFilePath, settings.ChunkToUploadSize);
+            });
 
+            toolStripStatusLabel1.Text = "Вычисление хэш-суммы";
+            
+            var sha256Checksum = await checksumTask;
+            var systemFolder = CreateSystemFolder(sha256Checksum);
+
+            toolStripStatusLabel1.Text = "Разделение файла на части";
             await Task.Run(() =>
             {
                 SplitFile(encryptedFilePath, chunkSize, sha256Checksum, uniqueName);
@@ -166,6 +340,7 @@ namespace WinFormsApp1
             var uploadingStatus = "Загрузка файлов на сервер ВК";
             toolStripStatusLabel1.Text = uploadingStatus;
             var uploadingFileCounter = 0;
+            
 
             foreach (var file in filesPaths)
             {
@@ -173,6 +348,11 @@ namespace WinFormsApp1
                 toolStripStatusLabel1.Text = $"{uploadingStatus}: {uploadingFileCounter}/{filesPaths.Length}";
                 var currentURL = await GetUploadURLAsync();
                 var uploadedFileInfo = await UploadFileAsync(file, currentURL.ToString());
+                if (uploadedFileInfo == _uploadFileErrorCode)
+                {
+                    throw new Exception("Falied to upload the file");
+                }
+
                 var savedFileInfo = await SaveFileOnServer(uploadedFileInfo);
                 if (uploadingFileCounter % 5 == 0)
                 {
@@ -198,9 +378,15 @@ namespace WinFormsApp1
                 }
             }
 
+            Console.WriteLine($"Uploaded: {originalFileName}");
+
+            await fileSizeTask;
+            fileSize = fileSizeTask.Result;
+
             var jsonPath = Path.Combine(VKDriveFolder, $"{sha256Checksum}.json");
             CreateJsonFile(originalFileName, fileSize, key, initVector, archivePassword, links, jsonPath, uniqueName);
 
+            cloudFile.Size = fileSize;
             cloudFile.jsonPath = jsonPath;
             cloudFile.CreationDate = DateTime.Now;
             _cloudFiles.Add(cloudFile);
@@ -445,11 +631,11 @@ namespace WinFormsApp1
             }
 
             return new string(password);
-        }        
+        }
 
         private async Task<string> SaveFileOnServer(string uploadedFileInfo)
         {
-            var json = JsonObject.Parse(uploadedFileInfo);
+            var json = JsonObject.Parse(uploadedFileInfo); // System.Text.Json.JsonReaderException: 'The input does not contain any JSON tokens. 
             var fileInfo = json["file"].ToString();
 
             using var client = new HttpClient();
@@ -471,86 +657,90 @@ namespace WinFormsApp1
 
         private async Task<string> UploadFileAsync(string file, string URL)
         {
-            using var client = new HttpClient();
-            client.Timeout = TimeSpan.FromSeconds(settings.HttpClientTimeout);
-            using var request = new HttpRequestMessage(HttpMethod.Post, URL);
-            var fileName = Path.GetFileName(file);
-            var fileContent = File.ReadAllBytes(file);
-            var content = new MultipartFormDataContent
+            var maxAttempts = 15;
+            var responseBody = _uploadFileErrorCode;
+
+            for (int attempt = 1; attempt < maxAttempts; attempt++)
             {
+                try
                 {
-                    new ByteArrayContent(fileContent), "file", fileName
+                    using var client = new HttpClient();
+                    using var request = new HttpRequestMessage(HttpMethod.Post, URL);
+                    client.Timeout = TimeSpan.FromSeconds(settings.HttpClientTimeout);
+                    var fileName = Path.GetFileName(file);
+                    var fileContent = File.ReadAllBytes(file);
+                    var content = new MultipartFormDataContent
+                    {
+                        {
+                            new ByteArrayContent(fileContent), "file", fileName
+                        }
+                    };
+                    request.Content = content;
+                    var response = await client.SendAsync(request);
+                    response.EnsureSuccessStatusCode();
+                    responseBody = await response.Content.ReadAsStringAsync();
+
                 }
-            };
-            request.Content = content;
-
-            var response = await client.SendAsync(request);
-            var responseBody = string.Empty;
-            try
-            {
-                response.EnsureSuccessStatusCode();
-                responseBody = await response.Content.ReadAsStringAsync();
-
-            }
-            catch (HttpRequestException ex)
-            {
-                if (ex.StatusCode == HttpStatusCode.GatewayTimeout)
+                catch (Exception ex)
                 {
-                    // Handle the gateway timeout error
-                    ShowPopupErrorMessagebox("Ошибка", "The server did not respond within the expected time. Please try again later.");
-                }
-                else
-                {
-                    // Handle any other HTTP request error
-                    ShowPopupErrorMessagebox("Ошибка", $"An HTTP request error occurred: {ex.Message}");
-                }
-            }
+                    Console.WriteLine($"Error occurred during upload attempt {attempt}: {ex.Message}");
+                    //ShowPopupErrorMessagebox("ERROR", $"Error occurred during upload attempt {attempt}: {ex.Message}");
 
-            return responseBody;
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(1000);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Failed to upload file after multiple attempts.");
+                        //ShowPopupErrorMessagebox("ERROR", "Failed to upload file after multiple attempts.");
+                    }                    
+                }            
+            }            
 
-            string? ExtractCPart(string URL)
-            {
-                var pattern = @"https://pu\.vk\.com/(\w+)/upload_doc\.php";
-                var match = Regex.Match(URL, pattern);
-
-                return match.Success ? match.Groups[1].Value : null;
-            }
-
-            string ExtractHash(string url)
-            {
-                var startIndex = url.IndexOf("hash=") + "hash=".Length;
-                var endIndex = url.IndexOf("&", startIndex);
-
-                return endIndex == -1 ? url[startIndex..] : url[startIndex..endIndex];
-            }
-
-            string ExtractRHash(string url)
-            {
-                var startIndex = url.IndexOf("rhash=") + "rhash=".Length;
-                var endIndex = url.IndexOf("&", startIndex);
-
-                return endIndex == -1 ? url.Substring(startIndex) : url.Substring(startIndex, endIndex - startIndex);
-            }
+            return responseBody;            
         }
 
         private async Task<string> GetUploadURLAsync()
         {
-            var client = new HttpClient();
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.vk.com/method/docs.getWallUploadServer");
-            var s = settings;
-            var content = new MultipartFormDataContent
-            {
-                { new StringContent(settings.AccessToken), "access_token" },
-                { new StringContent(settings.GroupID.ToString()), "group_id" },
-                { new StringContent(settings.ApiVersion), "v" }
-            };
+            var maxAttempts = 5;
+            var url = string.Empty;
 
-            request.Content = content;
-            var response = await client.SendAsync(request);            
-            response.EnsureSuccessStatusCode();
-            var responseBody = await response.Content.ReadAsStringAsync();
-            var json = JsonObject.Parse(responseBody);
-            var url = json["response"]["upload_url"].ToString();
+            for (int attempt = 1; attempt < maxAttempts; attempt++)
+            {
+                try
+                {
+                    var client = new HttpClient();
+                    var request = new HttpRequestMessage(HttpMethod.Post, "https://api.vk.com/method/docs.getWallUploadServer");
+                    var content = new MultipartFormDataContent
+                    {
+                        { new StringContent(settings.AccessToken), "access_token" },
+                        { new StringContent(settings.GroupID.ToString()), "group_id" },
+                        { new StringContent(settings.ApiVersion), "v" }
+                    };
+
+                    request.Content = content;
+                    var response = await client.SendAsync(request);
+                    response.EnsureSuccessStatusCode();
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    var json = JsonObject.Parse(responseBody);
+                    url = json["response"]["upload_url"].ToString();
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error occurred during getting the URL attempt {attempt}: {ex.Message}");
+                    
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(1000);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Failed to get URL after multiple attempts.");             
+                    }
+                }
+            }            
 
             return url;
         }
@@ -574,7 +764,7 @@ namespace WinFormsApp1
 
             if (input.Length <= bufferSize)
             {
-                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
+                var outputFile = Path.Combine(VKDriveFolder, sha256Checksum, $"{fileName}-{prefix}{index + 1}.vkd");
                 File.Copy(fileToSplit, outputFile);
                 return;
             }
@@ -583,7 +773,7 @@ namespace WinFormsApp1
 
             while (input.Position < input.Length)
             {
-                var outputFile = Path.Combine($"{VKDriveFolder}", $"{sha256Checksum}", $"{fileName}-{prefix}{index + 1}.vkd");
+                var outputFile = Path.Combine(VKDriveFolder, sha256Checksum, $"{fileName}-{prefix}{index + 1}.vkd");
                 using var output = new FileStream(outputFile, FileMode.Create);
                 var remaining = bufferSize;
 
@@ -636,6 +826,25 @@ namespace WinFormsApp1
             }
         }
 
+        private static void DecompressFolder(string archiveToDecompress, string outputFolder, string password)
+        {
+            using var zip = Ionic.Zip.ZipFile.Read(archiveToDecompress);
+            zip.Password = password;
+            zip.ExtractExistingFile = ExtractExistingFileAction.OverwriteSilently;
+            try
+            {
+                zip.ExtractAll(outputFolder, ExtractExistingFileAction.OverwriteSilently);
+            }
+            catch (BadPasswordException)
+            {
+                ShowPopupErrorMessagebox("Ошибка", "Неверный пароль от архива. Возможно, файл был повреждён или изменён");
+            }
+            catch (IOException e)
+            {
+                ShowPopupErrorMessagebox("I/O exception", e.Message);
+            }
+        }
+
         private void CompressFile(string fileToCompress, string outputArchive, string password)
         {
             var level = GetCompressionLevel();
@@ -650,27 +859,71 @@ namespace WinFormsApp1
             };
 
             zip.AddFile(fileToCompress, string.Empty);
-            zip.Save(outputArchive);
-
-            Ionic.Zlib.CompressionLevel GetCompressionLevel()
-            {
-                MyCompressionLevels selectedLevel = settings.CompressionLevel;
-
-                return selectedLevel switch
-                {
-                    MyCompressionLevels.None => Ionic.Zlib.CompressionLevel.None,
-                    MyCompressionLevels.Minimum => Ionic.Zlib.CompressionLevel.Level3,
-                    MyCompressionLevels.Default => Ionic.Zlib.CompressionLevel.Default,
-                    MyCompressionLevels.Best => Ionic.Zlib.CompressionLevel.BestCompression,
-                    _ => throw new ArgumentException("Invalid compression level"),
-                };
-            }
+            zip.Save(outputArchive);            
         }
 
-        private string GetFileSize(string file_path)
+        private async Task CompressFolder(string folderToCompress, string outputArchive, string password)
+        {
+            var level = GetCompressionLevel();
+            using var zip = new Ionic.Zip.ZipFile()
+            {
+                UseZip64WhenSaving = Zip64Option.Always,
+                Encryption = EncryptionAlgorithm.WinZipAes256,
+                Password = password,
+                CompressionLevel = level,
+                AlternateEncoding = Encoding.UTF8,
+                AlternateEncodingUsage = ZipOption.AsNecessary
+            };
+
+            await Task.Run(() =>
+            {
+                zip.AddDirectory(folderToCompress, Path.GetFileName(folderToCompress));
+                zip.Save(outputArchive);
+            });
+        }
+
+        private Ionic.Zlib.CompressionLevel GetCompressionLevel()
+        {
+            MyCompressionLevels selectedLevel = settings.CompressionLevel;
+
+            return selectedLevel switch
+            {
+                MyCompressionLevels.None => Ionic.Zlib.CompressionLevel.None,
+                MyCompressionLevels.Minimum => Ionic.Zlib.CompressionLevel.Level3,
+                MyCompressionLevels.Default => Ionic.Zlib.CompressionLevel.Default,
+                MyCompressionLevels.Best => Ionic.Zlib.CompressionLevel.BestCompression,
+                _ => throw new ArgumentException("Invalid compression level"),
+            };
+        }
+
+        private string GetFileSize(string filePath)
+        {
+            long fileSize = new FileInfo(filePath).Length;
+            return FormatFileSize(fileSize);
+        }
+
+        private async Task<string> GetFolderSize(string folderPath)
+        {
+            var directoryInfo = new DirectoryInfo(folderPath);
+            long totalSize = 0;
+
+            var filesList = await Task.Run(() =>
+            {
+                return directoryInfo.GetFiles("*.*", SearchOption.AllDirectories);
+            });
+
+            foreach (FileInfo fileInfo in filesList)
+            {
+                totalSize += fileInfo.Length;
+            }
+
+            return FormatFileSize(totalSize);
+        }
+
+        private string FormatFileSize(long size)
         {
             string[] sizes = { "B", "KB", "MB", "GB", "TB" };
-            double len = new FileInfo(file_path).Length;
+            double len = size;
             int order = 0;
 
             while (len >= 1024 && order < sizes.Length - 1)
@@ -678,9 +931,6 @@ namespace WinFormsApp1
                 order++;
                 len /= 1024;
             }
-
-            // Adjust the format string to your preferences. For example "{0:0.#}{1}" would
-            // show a single decimal place, and no space.
 
             return string.Format("{0:0.##} {1}", len, sizes[order]);
         }
@@ -790,7 +1040,44 @@ namespace WinFormsApp1
             return path;
         }
 
-        public static string GetSHA256Checksum(string path)
+        private string GetFolderSHA256Checksum(string folderPath)
+        {
+            using var sha256 = SHA256.Create();
+
+            var files = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories);
+            var checksums = new List<string>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var fileChecksum = GetFileSHA256Checksum(file);
+                    checksums.Add(fileChecksum);
+                }
+                catch (Exception ex)
+                {
+                    // Handle any exceptions that occur while calculating file checksums
+                    ShowPopupErrorMessagebox("Error", ex.Message);
+                }
+            }
+
+            var folderChecksum = CombineChecksums(checksums);
+            return folderChecksum;
+        }
+
+        private string CombineChecksums(List<string> checksums)
+        {
+            var combinedChecksum = string.Join("", checksums);
+            var combinedChecksumBytes = Encoding.UTF8.GetBytes(combinedChecksum);
+
+            using var sha256 = SHA256.Create();
+            var folderChecksumBytes = sha256.ComputeHash(combinedChecksumBytes);
+
+            return ByteArrayToString(folderChecksumBytes);
+        }
+
+
+        public static string GetFileSHA256Checksum(string path)
         {
             try
             {
@@ -810,39 +1097,44 @@ namespace WinFormsApp1
             {
                 ShowPopupErrorMessagebox("Невозможно посчитать SHA256", e.Message);
                 return $"Access Exception: {e.Message}";
-            }
+            }            
+        }
 
-            static string ByteArrayToString(byte[] array)
+        private static string ByteArrayToString(byte[] array)
+        {
+            StringBuilder sb = new();
+
+            for (int i = 0; i < array.Length; i++)
             {
-                StringBuilder sb = new();
-
-                for (int i = 0; i < array.Length; i++)
-                {
-                    sb.Append($"{array[i]:X2}");
-                }
-
-                return sb.ToString();
+                sb.Append($"{array[i]:X2}");
             }
+
+            return sb.ToString();
         }
 
         private async void button1_ClickAsync(object sender, EventArgs e)
         {
             var openFileDialog = new OpenFileDialog
             {
-                Filter = "All Files (*.*)|*.*"
+                Filter = "All Files (*.*)|*.*",
+                Multiselect = true
             };
             var result = openFileDialog.ShowDialog();
 
             if (result == DialogResult.OK)
             {
-                var selectedFileName = openFileDialog.FileName;
                 if (string.IsNullOrEmpty(settings.AccessToken))
                 {
                     ShowPopupErrorMessagebox("Ошибка VK API", "Невозможно загрузить файл: не настроен токен доступа");
                     return;
                 }
 
-                await UploadFileToVKDriveAsync(selectedFileName);
+                var selectedFileNames = openFileDialog.FileNames;
+
+                foreach (var filePath in selectedFileNames)
+                {
+                    await UploadFileToVKDriveAsync(filePath);
+                }                
             }
         }
 
@@ -883,89 +1175,162 @@ namespace WinFormsApp1
 
         private async void button_download_Click(object sender, EventArgs e)
         {
-            await DownloadSelectedFileAsync();
+            await DownloadSelectedAsync();
         }
 
         private async void listBox1_DoubleClick(object sender, EventArgs e)
         {
-            await DownloadSelectedFileAsync();
+            await DownloadSelectedAsync();
         }
 
-        private async Task DownloadSelectedFileAsync()
+        private async Task DownloadSelectedAsync()
         {
             if (listBox1.SelectedItem != null && _selectedFile != null)
             {
                 StartProgressBar();
                 DisableButtons();
-                toolStripStatusLabel1.Text = $"Скачивание файла {_selectedFile.NameAndSize}";
+                var path = string.Empty;
 
-                var filePartsToDownload = GetLinksFromJson(_selectedFile.jsonPath);
-                var fileFolder = Path.Combine(VKDriveFolder, Path.GetFileNameWithoutExtension(_selectedFile.jsonPath));
-
-                if (!Directory.Exists(fileFolder))
+                if (_selectedFile.IsFolder)
                 {
-                    Directory.CreateDirectory(fileFolder);
+                    await DownloadSelectedFolder();
+                    string originalFileName = _selectedFile.Name.Replace("📁", string.Empty);
+                    path = Path.Combine(downloadedFolder, originalFileName);
+                }
+                else
+                {
+                    await DownloadSelectedFile();
+                    path = Path.Combine(downloadedFolder, _selectedFile.Name);
+                }                
+
+                if (settings.OpenFolderAfterDownload)
+                {                    
+                    Process.Start("explorer.exe", $"/select,{path}");
                 }
 
-                var counter = 0;
-                foreach (var link in filePartsToDownload)
-                {
-                    var url = link.Trim();
-                    using var client = new HttpClient();
-                    using var response = await client.GetAsync(url);
-                    using var content = response.Content;
-                    var fileBytes = await content.ReadAsByteArrayAsync();
-                    var prefix = "0000";
-                    var fileName = $"To be assembled-{prefix}{counter + 1}.vkd";
-                    var pathToBeWritten = Path.Combine(fileFolder, fileName);
-                    await File.WriteAllBytesAsync(pathToBeWritten, fileBytes);
-                    counter++;
-                }
-
-                var toBeDecrypted = Path.Combine(temporaryFolder, "ToBeDecrypted.tmp");
-                var encryptedArchivePath = Path.Combine(temporaryFolder, "EncryptedArchive.zip");
-
-                ChangeStatusbarText("Объединение частей файла");
-
-                await Task.Run(() =>
-                {
-                    JoinParts(fileFolder, toBeDecrypted);
-                });
-
-                toolStripStatusLabel1.Text = "Рашифровка файла";
-
-                var jsonText = File.ReadAllText(_selectedFile.jsonPath);
-                dynamic jsonData = JsonConvert.DeserializeObject(jsonText);
-
-
-                var originalFileName = jsonData["OriginalName"];
-                await Task.Run(() =>
-                {
-                    var filePassword = StringToByte((string)jsonData["FilePassword"]);
-                    var iv = StringToByte((string)jsonData["InitializationVector"]);
-                    DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
-                });
-
-                toolStripStatusLabel1.Text = "Распаковка архива";
-                await Task.Run(() =>
-                {
-                    DecompressFile(encryptedArchivePath, downloadedFolder, (string)jsonData["ArchivePassword"]);
-                });
-
-                toolStripStatusLabel1.Text = "Удаление временных файлов";
-                ClearDirectory(fileFolder);
-                ClearDirectory(temporaryFolder);
                 EnableButtons();
                 StopProgressBar();
                 toolStripStatusLabel1.Text = statusbarLabelDefaultText;
+            }   
+        }
 
-                if (settings.OpenFolderAfterDownload)
-                {
-                    var path = Path.Combine(downloadedFolder, _selectedFile.Name);
-                    var argument = "/select, \"" + path + "\"";
-                    Process.Start("explorer.exe", argument);
-                }
+        private async Task DownloadSelectedFolder()
+        {
+            ChangeStatusbarText($"Скачивание папки {_selectedFile.NameAndSize.Replace("📁", string.Empty)}");
+            var filePartsToDownload = await Task.Run(() => GetLinksFromJson(_selectedFile.jsonPath));
+            var fileFolder = Path.Combine(VKDriveFolder, Path.GetFileNameWithoutExtension(_selectedFile.jsonPath));
+            if (!Directory.Exists(fileFolder))
+            {
+                Directory.CreateDirectory(fileFolder);
             }
+
+            using var client = new HttpClient();
+            var counter = 0;
+            foreach (var link in filePartsToDownload)
+            {
+                var url = link.Trim();
+                using var response = await client.GetAsync(url);
+                using var content = response.Content;
+                var fileBytes = await content.ReadAsByteArrayAsync();
+                var prefix = "0000";
+                var fileName = $"To be assembled-{prefix}{counter + 1}.vkd";
+                var pathToBeWritten = Path.Combine(fileFolder, fileName);
+                await File.WriteAllBytesAsync(pathToBeWritten, fileBytes);
+                counter++;
+            }
+
+            var toBeDecrypted = Path.Combine(temporaryFolder, "ToBeDecrypted.tmp");
+            var encryptedArchivePath = Path.Combine(temporaryFolder, "EncryptedArchive.zip");
+
+            ChangeStatusbarText("Объединение частей файла");
+
+            await Task.Run(() =>
+            {
+                JoinParts(fileFolder, toBeDecrypted);
+            });
+
+            toolStripStatusLabel1.Text = "Рашифровка файла";
+
+            var jsonText = File.ReadAllText(_selectedFile.jsonPath);
+            dynamic jsonData = JsonConvert.DeserializeObject(jsonText);
+
+            var originalFileName = jsonData["OriginalName"];
+            await Task.Run(() =>
+            {
+                var filePassword = StringToByte((string)jsonData["FilePassword"]);
+                var iv = StringToByte((string)jsonData["InitializationVector"]);
+                DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
+            });
+
+            toolStripStatusLabel1.Text = "Распаковка архива";
+            await Task.Run(() =>
+            {
+                DecompressFolder(encryptedArchivePath, downloadedFolder, (string)jsonData["ArchivePassword"]);
+            });
+
+            toolStripStatusLabel1.Text = "Удаление временных файлов";
+            ClearDirectory(fileFolder);
+            ClearDirectory(temporaryFolder);
+        }
+
+        private async Task DownloadSelectedFile()
+        {
+            ChangeStatusbarText($"Скачивание файла {_selectedFile.NameAndSize}");
+            var filePartsToDownload = await Task.Run(() => GetLinksFromJson(_selectedFile.jsonPath));
+            var fileFolder = Path.Combine(VKDriveFolder, Path.GetFileNameWithoutExtension(_selectedFile.jsonPath));
+
+            if (!Directory.Exists(fileFolder))
+            {
+                Directory.CreateDirectory(fileFolder);
+            }
+
+            using var client = new HttpClient();
+            var counter = 0;
+            foreach (var link in filePartsToDownload)
+            {
+                var url = link.Trim();
+                using var response = await client.GetAsync(url);
+                using var content = response.Content;
+                var fileBytes = await content.ReadAsByteArrayAsync();
+                var prefix = "0000";
+                var fileName = $"To be assembled-{prefix}{counter + 1}.vkd";
+                var pathToBeWritten = Path.Combine(fileFolder, fileName);
+                await File.WriteAllBytesAsync(pathToBeWritten, fileBytes);
+                counter++;
+            }
+
+            var toBeDecrypted = Path.Combine(temporaryFolder, "ToBeDecrypted.tmp");
+            var encryptedArchivePath = Path.Combine(temporaryFolder, "EncryptedArchive.zip");
+
+            ChangeStatusbarText("Объединение частей файла");
+
+            await Task.Run(() =>
+            {
+                JoinParts(fileFolder, toBeDecrypted);
+            });
+
+            toolStripStatusLabel1.Text = "Рашифровка файла";
+
+            var jsonText = File.ReadAllText(_selectedFile.jsonPath);
+            dynamic jsonData = JsonConvert.DeserializeObject(jsonText);
+
+            var originalFileName = jsonData["OriginalName"];
+            await Task.Run(() =>
+            {
+                var filePassword = StringToByte((string)jsonData["FilePassword"]);
+                var iv = StringToByte((string)jsonData["InitializationVector"]);
+                DecryptFile(toBeDecrypted, filePassword, iv, encryptedArchivePath);
+            });
+
+            toolStripStatusLabel1.Text = "Распаковка архива";
+            await Task.Run(() =>
+            {
+                DecompressFile(encryptedArchivePath, downloadedFolder, (string)jsonData["ArchivePassword"]);
+            });
+
+            toolStripStatusLabel1.Text = "Удаление временных файлов";
+            ClearDirectory(fileFolder);
+            ClearDirectory(temporaryFolder);            
         }
 
         private void ChangeStatusbarText(string text)
@@ -973,7 +1338,7 @@ namespace WinFormsApp1
             toolStripStatusLabel1.Text = text;
         }
 
-        private void ClearDirectory(string directoryPath)
+        private static void ClearDirectory(string directoryPath)
         {
             Directory.Delete(directoryPath, true);
             Directory.CreateDirectory(directoryPath);
@@ -999,7 +1364,7 @@ namespace WinFormsApp1
 
             if (settings.AskBeforeDelete)
             {
-                var result = MessageBox.Show("Вы уверены, что хотите удалить этот файл?", "Удаление файла", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                var result = MessageBox.Show($"Вы уверены, что хотите удалить {_selectedFile.Name}?", "Удаление файла", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result == DialogResult.No)
                 {
                     return;
@@ -1120,7 +1485,7 @@ namespace WinFormsApp1
                 case Keys.Enter:
                     if (listBox1.SelectedItem != null)
                     {
-                        await DownloadSelectedFileAsync();
+                        await DownloadSelectedAsync();
                     }
                     break;
             }
@@ -1140,6 +1505,11 @@ namespace WinFormsApp1
                 };
                 var jsonString = System.Text.Json.JsonSerializer.Serialize(settings, jsonOptions);
                 File.WriteAllText(_jsonSettingsLocation, jsonString);
+
+                if (!settings.EnableConsole)
+                {
+                    FreeConsole();
+                }
             }
 
             await RefreshFileList();
@@ -1229,10 +1599,50 @@ namespace WinFormsApp1
         {
             listBox1.Invalidate();
             Activate();
-            var droppedFilePath = GetFilePath(e);
 
-            await UploadFileToVKDriveAsync(droppedFilePath);
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                var droppedItems = (string[])e.Data.GetData(DataFormats.FileDrop);
+                await ProcessDroppedFilesAndFoldersAsync(droppedItems);
+            }
         }
+
+        private async Task ProcessDroppedFilesAndFoldersAsync(string[] droppedItems)
+        {
+            var filesDropped = new List<string>();
+            var foldersDropped = new List<string>();
+
+
+            await SortDroppedItems(droppedItems, filesDropped, foldersDropped);                       
+
+            foreach (var folderPath in foldersDropped)
+            {
+                await UploadFolderToVKDriveAsync(folderPath);
+            }
+
+            foreach (var filePath in filesDropped)
+            {
+                await UploadFileToVKDriveAsync(filePath);
+            }
+        }
+
+        private async Task SortDroppedItems(string[] droppedItems, List<string> filesDropped, List<string> foldersDropped)
+        {
+            foreach (string droppedPath in droppedItems)
+            {
+                if (File.Exists(droppedPath)) // It's a file
+                {
+                    filesDropped.Add(droppedPath);
+                }
+                else if (Directory.Exists(droppedPath)) // It's a folder
+                {
+                    foldersDropped.Add(droppedPath);
+                }
+            }
+
+            await Task.FromResult(0);
+        }
+
 
         private string GetFilePath(DragEventArgs e)
         {
@@ -1260,9 +1670,25 @@ namespace WinFormsApp1
             }
         }
 
+        private void ConsoleOutput(string message)
+        {
+            if (settings.EnableConsole && !Console.IsOutputRedirected)
+            {
+                Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss")}] - {message}");
+            }
+        }
+
+        public static void RestartApplication()
+        {
+            Process.Start(Process.GetCurrentProcess().MainModule.FileName);
+
+            // Terminate the current instance of the application
+            Environment.Exit(0);
+        }
+
         private static void ShowEasterEgg()
         {
             MessageBox.Show("Congratulations! You found the Easter egg!", "Easter Egg", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
+        }        
     }
 }

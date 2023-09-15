@@ -61,6 +61,7 @@
             groupBox6 = new GroupBox();
             labelCompressionLevel = new Label();
             comboBoxCompressionLvl = new ComboBox();
+            checkBoxEnableConsole = new CheckBox();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             groupBox3.SuspendLayout();
@@ -301,6 +302,7 @@
             // 
             // interfaceGroupBox
             // 
+            interfaceGroupBox.Controls.Add(checkBoxEnableConsole);
             interfaceGroupBox.Controls.Add(groupBox7);
             interfaceGroupBox.Controls.Add(checkBoxOpenFolderAfterLoad);
             interfaceGroupBox.Controls.Add(checkBoxAskBeforeDelete);
@@ -412,6 +414,17 @@
             comboBoxCompressionLvl.SelectedIndexChanged += comboBoxCompressionLvl_SelectedIndexChanged;
             comboBoxCompressionLvl.MouseHover += comboBoxCompressionLvl_MouseHover;
             // 
+            // checkBoxEnableConsole
+            // 
+            checkBoxEnableConsole.AutoSize = true;
+            checkBoxEnableConsole.Location = new Point(75, 72);
+            checkBoxEnableConsole.Name = "checkBoxEnableConsole";
+            checkBoxEnableConsole.Size = new Size(73, 19);
+            checkBoxEnableConsole.TabIndex = 4;
+            checkBoxEnableConsole.Text = "Консоль";
+            checkBoxEnableConsole.UseVisualStyleBackColor = true;
+            checkBoxEnableConsole.CheckedChanged += checkBoxEnableConsole_CheckedChanged;
+            // 
             // SettingsWindow
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -482,5 +495,6 @@
         private GroupBox groupBox7;
         private RadioButton radioBtnSortByDate;
         private RadioButton radioBtnSortByName;
+        private CheckBox checkBoxEnableConsole;
     }
 }
