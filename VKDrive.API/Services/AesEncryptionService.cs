@@ -60,6 +60,11 @@ public class AesEncryptionService : IEncryptionService
     /// </remarks>
     public byte[] GenerateEncryptionKey(int size)
     {
+        if (size <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), "Size must be a positive integer greater than zero.");
+        }
+
         var key = new byte[size];
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(key);
