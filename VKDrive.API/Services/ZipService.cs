@@ -9,7 +9,7 @@ public class ZipService : IArchiveService
 {
     public void CompressFile(string fileToCompress, string outputArchive, string password)
     {
-        // TODO Hardcoded!
+        // TODO: Hardcoded!
         var level = Ionic.Zlib.CompressionLevel.Default;
 
         using var zip = new ZipFile()
@@ -26,12 +26,9 @@ public class ZipService : IArchiveService
         zip.Save(outputArchive);
     }
 
-    public void CompressFolder(
-        string folderToCompress, 
-        string outputArchive, 
-        string password)
+    public void CompressFolder(string folderToCompress, string outputArchive, string password)
     {
-        // TODO Hardcoded!
+        // TODO: Hardcoded!
         var level = Ionic.Zlib.CompressionLevel.Default;
 
         using var zip = new ZipFile()

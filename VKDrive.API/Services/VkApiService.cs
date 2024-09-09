@@ -15,6 +15,7 @@ public class VkApiService : IVkApiService
     {
         Guard.AgainstNull(configuration, nameof(configuration));
         Guard.AgainstNull(logger, nameof(logger));
+
         _accessTokenVkAPI = configuration["VkApiKey"];
         _logger = logger;
     }

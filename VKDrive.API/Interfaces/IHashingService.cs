@@ -1,5 +1,8 @@
 ﻿namespace VKDrive.API.Interfaces;
 
+/// <summary>
+/// Provides methods for calculating the hash sums of files and folders.
+/// </summary>
 public interface IHashingService
 {
     /// <summary>
