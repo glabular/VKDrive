@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using SharedEntities.Models;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace VKDrive.WinForms;
 
@@ -137,42 +134,5 @@ internal class ApiService
         }
 
         return false;
-    }
-
-
-    // TODO: 
-    public class VkdriveEntry
-    {
-        public string OriginalName { get; set; }
-        public string OriginalPath { get; set; }
-        public string UniqueName { get; set; }
-        public string ArchivePassword { get; set; }
-        public byte[] AesKey { get; set; }
-        public byte[] AesIV { get; set; }
-        public DateTime CreationDate { get; set; }
-        public long Size { get; set; }
-        public string Checksum { get; set; }
-        public bool IsFolder { get; set; }
-        public List<string> Links { get; set; }
-
-        public string GetReadableSize()
-        {
-            if (Size >= 1024 * 1024 * 1024)
-            {
-                return $"{Size / (1024 * 1024 * 1024):0.##} GB";
-            }
-            else if (Size >= 1024 * 1024)
-            {
-                return $"{Size / (1024 * 1024):0.##} MB";
-            }
-            else if (Size >= 1024)
-            {
-                return $"{Size / 1024:0.##} KB";
-            }
-            else
-            {
-                return $"{Size} bytes";
-            }
-        }
     }
 }

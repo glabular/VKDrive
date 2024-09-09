@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 
-namespace VKDrive.API.Models;
+namespace SharedEntities.Models;
 
 public class VkdriveEntry
 {
@@ -47,19 +47,6 @@ public class VkdriveEntry
     /// A string representing the file size in a readable format. The format will be in bytes, kilobytes (KB), megabytes (MB), or gigabytes (GB),
     /// depending on the size of the file. The returned string will use the largest appropriate unit to make the size easy to understand.
     /// </returns>
-    /// <example>
-    /// This example demonstrates how to use the <see cref="GetReadableSize"/> method.
-    ///
-    /// <code>
-    /// var fileEntry = new VkdriveEntry { Size = 1234567890 };
-    /// string readableSize = fileEntry.GetReadableSize();
-    /// Console.WriteLine(readableSize); // Output: "1.15 GB"
-    /// </code>
-    /// </example>
-    /// <remarks>
-    /// The method performs integer division to calculate the file size in the largest appropriate unit. The size is displayed in gigabytes (GB),
-    /// megabytes (MB), kilobytes (KB), or bytes, depending on the magnitude of the size.
-    /// </remarks>
     public string GetReadableSize()
     {
         if (Size >= 1024 * 1024 * 1024)

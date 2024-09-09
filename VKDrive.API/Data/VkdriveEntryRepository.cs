@@ -1,8 +1,8 @@
 ﻿using VKDrive.API.DbContexts;
 using VKDrive.API.Interfaces;
-using VKDrive.API.Models;
 using Microsoft.EntityFrameworkCore;
 using VKDrive.API.Services;
+using SharedEntities.Models;
 
 namespace VKDrive.API.Data;
 

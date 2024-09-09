@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.EntityFrameworkCore;
-using VKDrive.API.Models;
+using SharedEntities.Models;
 
 namespace VKDrive.API.DbContexts;
 

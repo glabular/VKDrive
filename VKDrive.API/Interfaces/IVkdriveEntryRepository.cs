@@ -1,4 +1,4 @@
-﻿using VKDrive.API.Models;
+﻿using SharedEntities.Models;
 
 namespace VKDrive.API.Interfaces;
 

@@ -42,7 +42,7 @@ partial class Form1
         // buttonAddFile
         // 
         buttonAddFile.Location = new Point(7, 338);
-        buttonAddFile.Margin = new Padding(2, 2, 2, 2);
+        buttonAddFile.Margin = new Padding(2);
         buttonAddFile.Name = "buttonAddFile";
         buttonAddFile.Size = new Size(76, 33);
         buttonAddFile.TabIndex = 0;
@@ -57,9 +57,9 @@ partial class Form1
         listView1.FullRowSelect = true;
         listView1.GridLines = true;
         listView1.Location = new Point(2, 2);
-        listView1.Margin = new Padding(2, 2, 2, 2);
+        listView1.Margin = new Padding(2);
         listView1.Name = "listView1";
-        listView1.Size = new Size(451, 326);
+        listView1.Size = new Size(445, 324);
         listView1.TabIndex = 1;
         listView1.UseCompatibleStateImageBehavior = false;
         listView1.View = View.Details;
@@ -72,24 +72,24 @@ partial class Form1
         // columnHeader1
         // 
         columnHeader1.Text = "Name";
-        columnHeader1.Width = 250;
+        columnHeader1.Width = 150;
         // 
         // columnHeader2
         // 
         columnHeader2.Text = "Size";
-        columnHeader2.Width = 100;
+        columnHeader2.Width = 80;
         // 
         // columnHeader3
         // 
         columnHeader3.Text = "Added";
-        columnHeader3.Width = 200;
+        columnHeader3.Width = 100;
         // 
         // button_Delete_Selected
         // 
-        button_Delete_Selected.Location = new Point(167, 338);
-        button_Delete_Selected.Margin = new Padding(2, 2, 2, 2);
+        button_Delete_Selected.Location = new Point(357, 338);
+        button_Delete_Selected.Margin = new Padding(2);
         button_Delete_Selected.Name = "button_Delete_Selected";
-        button_Delete_Selected.Size = new Size(99, 33);
+        button_Delete_Selected.Size = new Size(97, 33);
         button_Delete_Selected.TabIndex = 2;
         button_Delete_Selected.Text = "Delete selected";
         button_Delete_Selected.UseVisualStyleBackColor = true;
@@ -98,7 +98,7 @@ partial class Form1
         // button_AddFolder
         // 
         button_AddFolder.Location = new Point(87, 338);
-        button_AddFolder.Margin = new Padding(2, 2, 2, 2);
+        button_AddFolder.Margin = new Padding(2);
         button_AddFolder.Name = "button_AddFolder";
         button_AddFolder.Size = new Size(76, 33);
         button_AddFolder.TabIndex = 3;
@@ -111,9 +111,9 @@ partial class Form1
         panel1.BackColor = Color.Transparent;
         panel1.Controls.Add(listView1);
         panel1.Location = new Point(7, 6);
-        panel1.Margin = new Padding(2, 2, 2, 2);
+        panel1.Margin = new Padding(2);
         panel1.Name = "panel1";
-        panel1.Size = new Size(453, 326);
+        panel1.Size = new Size(449, 328);
         panel1.TabIndex = 4;
         panel1.Paint += panel1_Paint;
         // 
@@ -126,9 +126,9 @@ partial class Form1
         Controls.Add(button_Delete_Selected);
         Controls.Add(buttonAddFile);
         Controls.Add(panel1);
-        Margin = new Padding(2, 2, 2, 2);
+        Margin = new Padding(2);
         Name = "Form1";
-        Text = "Form1";
+        Text = "VKDrive";
         panel1.ResumeLayout(false);
         ResumeLayout(false);
     }

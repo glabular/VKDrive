@@ -5,7 +5,9 @@ VisualStudioVersion = 17.10.35122.118
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VKDrive.API", "VKDrive.API\VKDrive.API.csproj", "{5AFE67B1-EF44-443C-94B8-53EADF5BA45D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VKDrive.WinForms", "VKDrive.WinForms\VKDrive.WinForms.csproj", "{6A9C3922-1D28-44A1-A8F6-55E954AED3DD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VKDrive.WinForms", "VKDrive.WinForms\VKDrive.WinForms.csproj", "{6A9C3922-1D28-44A1-A8F6-55E954AED3DD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharedEntities", "SharedEntities\SharedEntities.csproj", "{24E4368D-C19B-410D-BC3B-388B6B20DBB4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{6A9C3922-1D28-44A1-A8F6-55E954AED3DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6A9C3922-1D28-44A1-A8F6-55E954AED3DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6A9C3922-1D28-44A1-A8F6-55E954AED3DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24E4368D-C19B-410D-BC3B-388B6B20DBB4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24E4368D-C19B-410D-BC3B-388B6B20DBB4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24E4368D-C19B-410D-BC3B-388B6B20DBB4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24E4368D-C19B-410D-BC3B-388B6B20DBB4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

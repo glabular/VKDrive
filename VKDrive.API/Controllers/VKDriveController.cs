@@ -1,8 +1,8 @@
 ﻿using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using SharedEntities.Models;
 using VKDrive.API.Data;
 using VKDrive.API.Interfaces;
-using VKDrive.API.Models;
 using VKDrive.API.Services;
 
 namespace VKDrive.API.Controllers;
