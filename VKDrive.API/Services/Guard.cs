@@ -28,7 +28,9 @@ public static class Guard
 
     public static void AgainstInvalidPath(string path, string paramName)
     {
-        if (!Directory.Exists(path) && !File.Exists(path))
+        var isValidPath = Directory.Exists(path) || File.Exists(path);
+
+        if (!isValidPath)
         {
             throw new ArgumentException("The specified path does not exist or is not valid.", paramName);
         }

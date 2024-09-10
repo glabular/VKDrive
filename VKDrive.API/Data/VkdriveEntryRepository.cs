@@ -43,7 +43,7 @@ public class VkdriveEntryRepository : IVkdriveEntryRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while retrieving entries from the database.");
-            throw;  // Re-throw the exception to be handled by the caller if needed
+            throw;
         }
     }
 
@@ -70,7 +70,7 @@ public class VkdriveEntryRepository : IVkdriveEntryRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while retrieving entry with unique name: {UniqueName}", uniqueName);
-            throw;  // Re-throw the exception to allow higher-level handling
+            throw;
         }
     }
         
@@ -95,12 +95,12 @@ public class VkdriveEntryRepository : IVkdriveEntryRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while retrieving entry with id: {Id}", id);
-            throw;  // Re-throw the exception to allow higher-level handling
+            throw;
         }
     }
 
     /// <summary>
-    /// Asynchronously adds a new <see cref="VkdriveEntry"/> entity to the database and saves changes.
+    /// Asynchronously adds a new <see cref="VkdriveEntry"/> entity to the repository and saves changes.
     /// </summary>
     /// <param name="entry">The <see cref="VkdriveEntry"/> entity to add.</param>
     /// <exception cref="ArgumentNullException">Thrown when the <paramref name="entry"/> is <c>null</c>.</exception>
@@ -124,24 +124,17 @@ public class VkdriveEntryRepository : IVkdriveEntryRepository
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Error occurred while saving VkdriveEntry with UniqueName: {UniqueName}", entry.UniqueName);
-            throw;  // Re-throw the exception to allow higher-level handling
+            throw;
         }
     }
 
-    //public async Task UpdateEntryAsync(VkdriveEntry entry)
-    //{
-    //    _context.VkdriveEntries.Update(entry);
-    //    await _context.SaveChangesAsync();
-    //}
-
     /// <summary>
-    /// Asynchronously deletes a <see cref="VkdriveEntry"/> entity from the database by its unique name.
+    /// Asynchronously deletes a <see cref="VkdriveEntry"/> entity from the repository by its unique name.
     /// </summary>
     /// <param name="uniqueName">The unique name of the entry to delete.</param>
     /// <exception cref="ArgumentException">Thrown when the <paramref name="uniqueName"/> is <c>null</c> or empty.</exception>
     /// <exception cref="KeyNotFoundException">Thrown when no entry with the specified <paramref name="uniqueName"/> is found.</exception>
     /// <exception cref="DbUpdateException">Thrown when an error occurs while saving changes to the database.</exception>
-
     public async Task DeleteEntryAsync(string uniqueName)
     {
         if (string.IsNullOrEmpty(uniqueName))
@@ -165,23 +158,12 @@ public class VkdriveEntryRepository : IVkdriveEntryRepository
         catch (KeyNotFoundException ex)
         {
             _logger.LogWarning(ex, "Delete operation failed. Entry with unique name '{UniqueName}' not found.", uniqueName);
-            throw;  // Re-throw the exception to allow higher-level handling
+            throw;
         }
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Error occurred while deleting VkdriveEntry with unique name: {UniqueName}", uniqueName);
-            throw;  // Re-throw the exception to allow higher-level handling
+            throw;
         }
-    }
-
-    public async Task<bool> IsEntryExistAsync(int id)
-    {
-        return await _context.VkdriveEntries.AllAsync(e => e.Id == id);
-    }
-
-    // ???
-    public async Task<bool> SaveChangesAsync()
-    {
-        return await _context.SaveChangesAsync() >= 0;
     }
 }

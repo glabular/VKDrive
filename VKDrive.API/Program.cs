@@ -51,7 +51,6 @@ internal class Program
         services.AddScoped<IArchiveService, ZipService>();
         services.AddScoped<IVkApiService, VkApiService>();
         services.AddScoped<VkdriveEntryService>();
-        services.AddTransient<PasswordGeneratorService>();
         services.AddTransient<FilePartitionerService>();
     }
 }

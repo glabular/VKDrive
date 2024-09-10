@@ -1,5 +1,4 @@
 ﻿using Ionic.Zip;
-using Microsoft.AspNetCore.DataProtection.AuthenticatedEncryption;
 using System.Text;
 using VKDrive.API.Interfaces;
 
@@ -9,6 +8,8 @@ public class ZipService : IArchiveService
 {
     public void CompressFile(string fileToCompress, string outputArchive, string password)
     {
+        ValidateZipInput(fileToCompress, outputArchive, password);
+
         // TODO: Hardcoded!
         var level = Ionic.Zlib.CompressionLevel.Default;
 
@@ -28,6 +29,8 @@ public class ZipService : IArchiveService
 
     public void CompressFolder(string folderToCompress, string outputArchive, string password)
     {
+        ValidateZipInput(folderToCompress, outputArchive, password);
+
         // TODO: Hardcoded!
         var level = Ionic.Zlib.CompressionLevel.Default;
 
@@ -47,6 +50,8 @@ public class ZipService : IArchiveService
 
     public void DecompressArchive(string archiveToDecompress, string outputFolder, string password)
     {
+        ValidateZipInput(archiveToDecompress, outputFolder, password);
+
         using var zip = Ionic.Zip.ZipFile.Read(archiveToDecompress);
         zip.Password = password;
         zip.ExtractExistingFile = ExtractExistingFileAction.OverwriteSilently;
@@ -64,5 +69,12 @@ public class ZipService : IArchiveService
             // TODO:
             throw new Exception(e.Message);
         }
+    }
+
+    private void ValidateZipInput(string filePath, string toBeCreated, string password)
+    {
+        Guard.AgainstInvalidPath(filePath, nameof(filePath));
+        Guard.AgainstNullOrWhitespace(toBeCreated, nameof(toBeCreated));
+        Guard.AgainstNullOrWhitespace(password, nameof(password));
     }
 }

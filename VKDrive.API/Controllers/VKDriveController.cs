@@ -57,6 +57,7 @@ public class VKDriveController : ControllerBase
 
         try
         {
+            // The original file or folder that has been retrieved from the server, assembled, decrypted, decompressed, and saved by the following path. 
             var originalEntryPath = await _vkdriveEntryService.GetOriginalFileAsync(uniqueName);
 
             if (System.IO.File.Exists(originalEntryPath))

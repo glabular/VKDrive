@@ -1,25 +1,26 @@
 ﻿using SharedEntities.Models;
+using System.Security.Cryptography;
 using VKDrive.API.Interfaces;
 
 namespace VKDrive.API.Services;
 
 public class VkdriveEntryService
 {
-    private readonly int _archivePasswordLength = 8192;
     private readonly string _temporaryFolder = @"D:\VKDrive\tmp"; // TODO
     private readonly string VKDriveFolder = @"D:\VKDrive"; // TODO
-    private readonly IEncryptionService _encryptionService;
-    private readonly IArchiveService _zipService;
-    private readonly ILogger<VkdriveEntryService> _logger;
-    private readonly IVkApiService _vkApiService;
-    private readonly IHashingService _hashingService;
-    private readonly IVkdriveEntryRepository _repository;
+    private const int archivePasswordLength = 8192; // TODO
+    private const int aesKeyLength = 32;
+    private const int ivLength = 16;
     private readonly FilePartitionerService _filePartitionerService;
-    private readonly PasswordGeneratorService _passwordGenerator;
+    private readonly IEncryptionService _encryptionService;
+    private readonly ILogger<VkdriveEntryService> _logger;
+    private readonly IVkdriveEntryRepository _repository;
+    private readonly IHashingService _hashingService;
+    private readonly IArchiveService _zipService;
+    private readonly IVkApiService _vkApiService;
 
     public VkdriveEntryService(
         FilePartitionerService filePartitionerService,
-        PasswordGeneratorService passwordGenerator,
         IEncryptionService encryptionService,
         IVkdriveEntryRepository repository,
         IHashingService hashingService,
@@ -29,7 +30,6 @@ public class VkdriveEntryService
     {
         Guard.AgainstNull(filePartitionerService, nameof(filePartitionerService));
         Guard.AgainstNull(encryptionService, nameof(encryptionService));
-        Guard.AgainstNull(passwordGenerator, nameof(passwordGenerator));
         Guard.AgainstNull(hashingService, nameof(hashingService));
         Guard.AgainstNull(vkApiService, nameof(vkApiService));
         Guard.AgainstNull(repository, nameof(repository));
@@ -38,7 +38,6 @@ public class VkdriveEntryService
 
         _filePartitionerService = filePartitionerService;
         _encryptionService = encryptionService;
-        _passwordGenerator = passwordGenerator;
         _hashingService = hashingService;
         _vkApiService = vkApiService;
         _repository = repository;
@@ -55,41 +54,169 @@ public class VkdriveEntryService
     /// <exception cref="ArgumentException">Thrown when the specified path does not exist or is not valid.</exception>    
     public async Task CreateAndSaveEntryAsync(string path)
     {
-        Guard.AgainstNullOrWhitespace(path, nameof(path));
         Guard.AgainstInvalidPath(path, nameof(path));
 
         _logger.LogInformation("CreateAndSaveEntryAsync started with path: {Path}", path);
 
+        var isFolder = IsFolder(path);
+        var uniqueName = GenerateUniqueName();
+        var sha256Checksum = CalculateChecksum(path, isFolder);
+        var archivePath = Path.Combine(_temporaryFolder, $"{uniqueName}.7z");
+        var encryptedFilePath = Path.Combine(_temporaryFolder, $"{sha256Checksum[..12].ToLower()}.aes");
+        var archivePassword = GenerateArchivePassword();
+        var initialSize = await CalculateInitialSize(path, isFolder);
+
+        PerformCompressing(path, isFolder, archivePath, archivePassword);
+
+        var aesKey = GenerateAesKey();
+        var initializationVector = GenerateIV();
+
+        PerformEncryption(archivePath, encryptedFilePath, aesKey, initializationVector);
+
+        var splitFilesFolder = Path.Combine(_temporaryFolder, $"Splitted files {sha256Checksum[..7]}");
+        
+        var fileParts = PerformFileSplitting(uniqueName, encryptedFilePath, splitFilesFolder);
+        
+        var links = await UploadFilePartsToServer(fileParts);
+
+        PerformCleanup(archivePath, encryptedFilePath, splitFilesFolder, fileParts);
+
+        var entry = new VkdriveEntry
+        {
+            AesIV = initializationVector,
+            AesKey = aesKey,
+            ArchivePassword = archivePassword,
+            Checksum = sha256Checksum,
+            CreationDate = DateTime.Now,
+            IsFolder = isFolder,
+            Links = links,
+            OriginalName = isFolder ? new DirectoryInfo(path).Name : Path.GetFileName(path),
+            OriginalPath = path,
+            Size = initialSize,
+            UniqueName = uniqueName,
+        };
+
+        await _repository.AddEntryAsync(entry);
+        _logger.LogInformation("Entry successfully created and saved in the database.");
+    }
+
+    private bool IsFolder(string path)
+    {
         var isFolder = Directory.Exists(path);
         _logger.LogInformation("Path determined as {Type}: {Path}", isFolder ? "Folder" : "File", path);
+        return isFolder;
+    }
 
-        var uniqueName = GenerateUniqueName();
-        _logger.LogDebug("Generated unique name: {UniqueName}", uniqueName);
+    private async Task<List<string>> UploadFilePartsToServer(List<string> fileParts)
+    {
+        _logger.LogInformation("Uploading {FilePartsCount} file parts to VK server.", fileParts.Count);
 
-        var sha256Checksum = isFolder 
-            ? _hashingService.CalculateFolderHash(path) 
+        var URLs = new List<string>();
+
+        foreach (var filePartPath in fileParts)
+        {
+            var url = await _vkApiService.UploadFileToVkServer(filePartPath);
+            URLs.Add(url);
+            _logger.LogDebug("Uploaded file part {FilePartPath} with URL: {URL}", filePartPath, url);
+        }
+
+        return URLs;
+    }
+
+    private List<string> PerformFileSplitting(string uniqueName, string filePath, string splitFilesFolder)
+    {
+        _logger.LogDebug("Splitting encrypted file into chunks in folder: {SplitFilesFolder}", splitFilesFolder);
+
+        // TODO: Get from settings!
+        var chinkSizeMb = 1;
+
+        return _filePartitionerService.SplitFile(filePath, chinkSizeMb, splitFilesFolder, uniqueName[..8]);
+    }
+
+    private void PerformEncryption(string archivePath, string encryptedFilePath, byte[] aesKey, byte[] initializationVector)
+    {
+        _logger.LogInformation("Encrypting archive at {ArchivePath} to {EncryptedFilePath}.", archivePath, encryptedFilePath);
+        _encryptionService.EncryptFile(archivePath, aesKey, initializationVector, encryptedFilePath);
+    }
+
+    private byte[] GenerateIV()
+    {
+        var initializationVector = _encryptionService.GenerateEncryptionKey(ivLength);
+        _logger.LogDebug("Generated initialization vector with {IvLength} length: {initializationVector}", ivLength, initializationVector);
+        return initializationVector;
+    }
+
+    private byte[] GenerateAesKey()
+    {
+        var aesKey = _encryptionService.GenerateEncryptionKey(aesKeyLength);
+        _logger.LogDebug("Generated AES key with {AesKeyLength} length: {AesKey}", aesKeyLength, aesKey);
+        return aesKey;
+    }
+
+    private async Task<long> CalculateInitialSize(string path, bool isFolder)
+    {
+        var initialSize = isFolder ? await GetFolderSize(path) : new FileInfo(path).Length;
+        _logger.LogInformation("Initial {Type} size: {Size}", isFolder ? "Folder" : "File", GetReadableSize(initialSize));
+        return initialSize;
+    }
+
+    private string GenerateArchivePassword()
+    {
+        // TODO: Refactor, use GenerateEncryptionKey from AesEncryptionService.
+        const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+[{]}|;:',<.>/?`~";
+        var password = new char[archivePasswordLength];
+        var rng = RandomNumberGenerator.Create();
+        var buffer = new byte[sizeof(uint)];
+
+        for (int i = 0; i < archivePasswordLength; i++)
+        {
+            rng.GetBytes(buffer);
+            uint randomIndex = BitConverter.ToUInt32(buffer, 0) % (uint)chars.Length;
+            password[i] = chars[(int)randomIndex];
+        }
+
+        var archivePassword = new string(password);
+
+        _logger.LogDebug("Generated archive password: {ArchivePassword}", archivePassword);
+
+        return archivePassword;
+    }
+
+    private string CalculateChecksum(string path, bool isFolder)
+    {
+        var sha256Checksum = isFolder
+            ? _hashingService.CalculateFolderHash(path)
             : _hashingService.CalculateFileHash(path);
         _logger.LogDebug("Calculated checksum: {Checksum}", sha256Checksum);
 
-        var archivePath = Path.Combine(_temporaryFolder, $"{uniqueName}.7z");
-        var encryptedFilePath = Path.Combine(_temporaryFolder, $"{sha256Checksum[..12].ToLower()}.aes");
-        _logger.LogDebug("Paths prepared: ArchivePath={ArchivePath}, EncryptedFilePath={EncryptedFilePath}", archivePath, encryptedFilePath);
-                
-        var archivePassword = _passwordGenerator.GeneratePassword(_archivePasswordLength);
-        _logger.LogDebug("Generated archive password: {ArchivePassword}", archivePassword);
+        return sha256Checksum;
+    }
 
-        var aesKeyLength = 32;
-        var aesKey = _encryptionService.GenerateEncryptionKey(aesKeyLength);
-        _logger.LogDebug("Generated AES key with {AesKeyLength} length: {AesKey}", aesKeyLength, aesKey);
+    private void PerformCleanup(string archivePath, string encryptedFilePath, string splitFilesFolder, List<string> fileParts)
+    {
+        _logger.LogInformation("Cleaning up temporary files.");
 
-        var ivLength = 16;
-        var initializationVector = _encryptionService.GenerateEncryptionKey(ivLength);
-        _logger.LogDebug("Generated initialization vector with {IvLength} length: {initializationVector}", ivLength, initializationVector);
+        _logger.LogInformation("Deleting archive file: {ArchivePath}", archivePath);
+        File.Delete(archivePath);
 
-        var initialSize = isFolder ? await GetFolderSize(path) : new FileInfo(path).Length;
-        _logger.LogInformation("Initial {Type} size: {Size}", isFolder ? "Folder" : "File", GetReadableSize(initialSize));
+        _logger.LogInformation("Deleting encrypted file: {EncryptedFilePath}", encryptedFilePath);
+        File.Delete(encryptedFilePath);
 
+        _logger.LogInformation("Deleting file parts.");
+        foreach (var filePart in fileParts)
+        {
+            _logger.LogInformation("Deleting file part: {FilePart}", filePart);
+            File.Delete(filePart);
+        }
 
+        _logger.LogInformation("Deleting split files folder: {SplitFilesFolder}", splitFilesFolder);
+        Directory.Delete(splitFilesFolder);
+
+        _logger.LogInformation("Cleanup completed.");
+    }
+
+    private void PerformCompressing(string path, bool isFolder, string archivePath, string archivePassword)
+    {
         if (isFolder)
         {
             _logger.LogInformation("Compressing folder at {Path} to {ArchivePath} with a password.", path, archivePath);
@@ -102,48 +229,7 @@ public class VkdriveEntryService
         }
 
         var compressedSize = new FileInfo(archivePath).Length;
-        _logger.LogInformation("Compressed file size: {Size}", GetReadableSize(compressedSize));
-
-        _logger.LogInformation("Encrypting archive at {ArchivePath} to {EncryptedFilePath}.", archivePath, encryptedFilePath);
-        _encryptionService.EncryptFile(archivePath, aesKey, initializationVector, encryptedFilePath);
-
-        var splitFilesFolder = Path.Combine(_temporaryFolder, $"Splitted files {sha256Checksum[..7]}");
-        _logger.LogDebug("Splitting encrypted file into pieces in folder: {SplitFilesFolder}", splitFilesFolder);
-
-        var fileParts = SplitFileToPieces(encryptedFilePath, splitFilesFolder, uniqueName[..8]);
-        var links = new List<string>();
-
-        _logger.LogInformation("Uploading {FilePartsCount} file parts to VK server.", fileParts.Count);
-        foreach (var filePartPath in fileParts)
-        {
-            var link = await _vkApiService.UploadFileToVkServer(filePartPath);
-            links.Add(link);
-            _logger.LogDebug("Uploaded file part {FilePartPath} with link: {Link}", filePartPath, link);
-        }
-
-        _logger.LogInformation("Cleaning up temporary files.");
-        File.Delete(archivePath);
-        File.Delete(encryptedFilePath);
-        fileParts.ForEach(File.Delete);
-        Directory.Delete(splitFilesFolder);
-
-        var entry = new VkdriveEntry
-        {
-            OriginalName = isFolder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) : Path.GetFileName(path),
-            OriginalPath = path,
-            UniqueName = uniqueName,
-            Checksum = sha256Checksum,
-            Size = initialSize,
-            ArchivePassword = archivePassword,
-            AesKey = aesKey,
-            AesIV = initializationVector,
-            CreationDate = DateTime.Now,
-            Links = links,
-            IsFolder = isFolder
-        };
-
-        await _repository.AddEntryAsync(entry);
-        _logger.LogInformation("Entry successfully created and saved in the database.");
+        _logger.LogInformation("Compressed archive size: {Size}", GetReadableSize(compressedSize));
     }
 
     public async Task<string> GetOriginalFileAsync(string uniqueName)
@@ -183,12 +269,9 @@ public class VkdriveEntryService
         _logger.LogInformation("File retrieval successful.");
 
         return Path.Combine(_temporaryFolder, entry.OriginalName);
-    }    
-
-    public async Task<IEnumerable<VkdriveEntry>> GetAllEntriesAsync()
-    {
-        return await _repository.GetAllEntriesAsync();
     }
+
+    public async Task<IEnumerable<VkdriveEntry>> GetAllEntriesAsync() => await _repository.GetAllEntriesAsync();
 
     public async Task<string> DeleteEntryAsync(string uniqueName)
     {
@@ -259,6 +342,7 @@ public class VkdriveEntryService
         {
             Directory.CreateDirectory(downloadsFolder);
         }
+
         using var client = new HttpClient();
 
         var counter = 0;
@@ -275,20 +359,14 @@ public class VkdriveEntryService
         }
 
         return downloadedParts;
-    }
-
-    private List<string> SplitFileToPieces(string filePath, string outputDirectory, string outputFileName)
-    {
-        // TODO: Get from settings!
-        var chinkSizeMb = 1;
-
-        return _filePartitionerService.SplitFile(filePath, chinkSizeMb, outputDirectory, outputFileName);
     }    
 
-    private static string GenerateUniqueName()
+    private string GenerateUniqueName()
     {
-        // TODO Make SUPER unique
-        return Guid.NewGuid().ToString();
+        var uniqueName = $"{Guid.NewGuid()}{Guid.NewGuid()}";
+        _logger.LogDebug("Generated unique name: {UniqueName}", uniqueName);
+
+        return uniqueName;
     }
 
     private static async Task<long> GetFolderSize(string folderPath)
@@ -324,7 +402,7 @@ public class VkdriveEntryService
         }
         else if (bytes >= 1024)
         {
-            return $"{bytes / 1024:0.##} KB";
+            return $"{bytes / 1024:0.##} kB";
         }
         else
         {

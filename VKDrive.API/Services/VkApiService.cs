@@ -33,6 +33,7 @@ public class VkApiService : IVkApiService
     public async Task<string> UploadFileToVkServer(string filePath)
     {
         Guard.AgainstNullOrWhitespace(filePath, nameof(filePath));
+        Guard.AgainstInvalidPath(filePath, nameof(filePath));
 
         var currentUrl = await GetUploadURLAsync();
         var uploadedFileInfo = await UploadFileAsync(filePath, currentUrl);
@@ -50,6 +51,8 @@ public class VkApiService : IVkApiService
 
     public async Task<string> DeleteDocumentFromVkServer(string docUrl)
     {
+        Guard.AgainstNullOrWhitespace(docUrl, nameof(docUrl));
+
         using var client = new HttpClient();
         // NB! HttpMethod.Delete returns 418 I'm a teapot status code
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.vk.com/method/docs.delete");
@@ -222,7 +225,8 @@ public class VkApiService : IVkApiService
         try
         {
             var json = JsonObject.Parse(uploadedFileInfo); // System.Text.Json.JsonReaderException: 'The input does not contain any JSON tokens. 
-            var fileInfo = json["file"].ToString();
+            // TODO: handle null possibility.
+            var fileInfo = json!["file"].ToString(); // VK server always returns valid json with the "file" node
 
             using var client = new HttpClient();
             using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.vk.com/method/docs.save");

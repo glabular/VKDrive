@@ -14,30 +14,12 @@ public class Sha256HashingService : IHashingService
     /// </summary>
     /// <param name="filePath">The path of the file to hash.</param>
     /// <returns>The SHA-256 hash of the file as a hexadecimal string.</returns>
+    /// /// <exception cref="IOException">Thrown when there is an issue reading the file.</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when access to the file is denied.</exception>
     public string CalculateFileHash(string filePath)
     {
-        return CalculateSha256Checksum(filePath);
-    }
+        Guard.AgainstInvalidPath(filePath, nameof(filePath));
 
-    /// <summary>
-    /// Calculates the SHA-256 hash of a folder and its contents.
-    /// </summary>
-    /// <param name="folderPath">The path of the folder to hash.</param>
-    /// <returns>The SHA-256 hash of the folder and its contents as a hexadecimal string.</returns>
-    public string CalculateFolderHash(string folderPath)
-    {
-        return CalculateFolderSha256Checksum(folderPath);
-    }
-
-    /// <summary>
-    /// Calculates the SHA-256 checksum of a file at the specified path.
-    /// </summary>
-    /// <param name="filePath">The path of the file to hash.</param>
-    /// <returns>The SHA-256 checksum as a hexadecimal string.</returns>
-    /// <exception cref="IOException">Thrown when there is an issue reading the file.</exception>
-    /// <exception cref="UnauthorizedAccessException">Thrown when access to the file is denied.</exception>
-    private static string CalculateSha256Checksum(string filePath)
-    {
         try
         {
             using var sha256 = SHA256.Create();
@@ -58,27 +40,33 @@ public class Sha256HashingService : IHashingService
     }
 
     /// <summary>
-    /// Computes the SHA-256 hash of all files within a folder.
+    /// Calculates a SHA-256 hash for a folder by first calculating the hash for each file within the folder, 
+    /// then computing a combined hash of those individual file hashes.
     /// </summary>
-    /// <param name="folderPath">The path of the folder to hash.</param>
-    /// <returns>The combined SHA-256 hash of all files in the folder as a hexadecimal string.</returns>
-    private static string CalculateFolderSha256Checksum(string folderPath)
+    /// <param name="folderPath">The path to the folder whose contents are to be hashed.</param>
+    /// <returns>A string representing the SHA-256 hash of the combined hashes of all the files in the folder.</returns>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="folderPath"/> is null or whitespace.</exception>
+    /// <exception cref="DirectoryNotFoundException">Thrown if the folder specified by <paramref name="folderPath"/> does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown if the caller does not have the required permission to access the folder or its files.</exception>    
+    public string CalculateFolderHash(string folderPath)
     {
+        Guard.AgainstInvalidPath(folderPath, nameof(folderPath));
+
         using var sha256 = SHA256.Create();
         var files = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories);
         var checksums = new List<string>();
 
-        foreach (var file in files)
+        try
         {
-            try
+            foreach (var file in files)
             {
-                var fileChecksum = CalculateSha256Checksum(file);
+                var fileChecksum = CalculateFileHash(file);
                 checksums.Add(fileChecksum);
             }
-            catch (Exception ex)
-            {
-                // Log
-            }
+        }
+        catch (Exception ex)
+        {
+            // TODO: Log
         }
 
         var folderChecksum = CalculateCombinedChecksum(checksums);
@@ -97,9 +85,8 @@ public class Sha256HashingService : IHashingService
         var combinedChecksum = string.Join("", checksums);
 
         // Compute the hash of the combined checksum string
-        using var sha256 = SHA256.Create();
         var combinedChecksumBytes = Encoding.UTF8.GetBytes(combinedChecksum);
-        var finalHash = sha256.ComputeHash(combinedChecksumBytes);
+        var finalHash = SHA256.HashData(combinedChecksumBytes);
 
         return ByteArrayToString(finalHash);
     }

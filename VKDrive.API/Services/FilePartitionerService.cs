@@ -23,6 +23,8 @@ public class FilePartitionerService
     /// </remarks>
     public List<string> SplitFile(string fileToSplit, int chunkSizeMB, string outputDirectory, string outputFileName)
     {
+        ValidateFileSplittingInput(fileToSplit, chunkSizeMB, outputDirectory, outputFileName);
+
         var chunkSize = CalculateChunkSize(fileToSplit, chunkSizeMB);
         var fileParts = new List<string>();
         var bufferSize = 1024 * 1024 * chunkSize;
@@ -73,11 +75,31 @@ public class FilePartitionerService
     /// </remarks>
     public void JoinParts(IEnumerable<string> filePartsPaths, string assembledFilePath)
     {
+        ValidateFileJoiningInput(filePartsPaths, assembledFilePath);
+
         using var outfile = new FileStream(assembledFilePath, FileMode.Create);
         foreach (var filePartPath in filePartsPaths)
         {
             using var infile = new FileStream(filePartPath, FileMode.Open);
             infile.CopyTo(outfile);
+        }
+    }
+
+    private static void ValidateFileJoiningInput(IEnumerable<string> filePartsPaths, string assembledFilePath)
+    {
+        Guard.AgainstNullOrEmptyCollection(filePartsPaths, nameof(filePartsPaths));
+        Guard.AgainstNullOrWhitespace(assembledFilePath, nameof(assembledFilePath));
+    }
+
+    private static void ValidateFileSplittingInput(string fileToSplit, int chunkSizeMB, string outputDirectory, string outputFileName)
+    {
+        Guard.AgainstInvalidPath(fileToSplit, nameof(fileToSplit));
+        Guard.AgainstNullOrWhitespace(outputFileName, nameof(outputFileName));
+        Guard.AgainstNullOrWhitespace(outputDirectory, nameof(outputDirectory));
+
+        if (chunkSizeMB < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chunkSizeMB), chunkSizeMB, "Chunk size must be 1 MB or more.");
         }
     }
 

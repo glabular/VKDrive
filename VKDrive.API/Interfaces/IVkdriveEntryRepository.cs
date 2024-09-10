@@ -27,13 +27,17 @@ public interface IVkdriveEntryRepository
     /// <returns>A task that represents the asynchronous operation. The task result contains the <see cref="VkdriveEntry"/> entity if found; otherwise, <c>null</c>.</returns>
     Task<VkdriveEntry?> GetEntryByUniqueNameAsync(string uniqueName);
 
+    /// <summary>
+    /// Asynchronously adds a new <see cref="VkdriveEntry"/> entity to the repository.
+    /// </summary>
+    /// <param name="entry">The <see cref="VkdriveEntry"/> entity to be added.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     Task AddEntryAsync(VkdriveEntry entry);
 
-    //Task UpdateEntryAsync(VkdriveEntry entry);
-
+    /// <summary>
+    /// Asynchronously deletes a <see cref="VkdriveEntry"/> entity from the repository by its unique name.
+    /// </summary>
+    /// <param name="uniqueName">The unique name of the <see cref="VkdriveEntry"/> entity to be deleted.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     Task DeleteEntryAsync(string uniqueName);
-
-    Task<bool> IsEntryExistAsync(int id);
-
-    Task<bool> SaveChangesAsync();
 }

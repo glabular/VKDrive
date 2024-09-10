@@ -65,7 +65,8 @@ public partial class Form1 : Form
         using var openFileDialog = new OpenFileDialog
         {
             Filter = "All Files (*.*)|*.*",
-            Multiselect = true
+            Multiselect = true,
+            Title = "Select up to 5 files..."
         };
 
         var result = openFileDialog.ShowDialog();
