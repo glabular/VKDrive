@@ -1,23 +1,36 @@
-﻿using System.Text.Json.Nodes;
+﻿using SharedEntities;
+using SharedEntities.Settings;
+using System.Text.Json.Nodes;
 using VKDrive.API.Interfaces;
 
 namespace VKDrive.API.Services;
 
 public class VkApiService : IVkApiService
 {
-    // TODO: hardcoded values
-    private string _accessTokenVkAPI = string.Empty;
-    private const int _groupId = 39530977;
-    private const string _apiVersion = "5.131";
+    private readonly string _accessTokenVkAPI;
+    private readonly string _apiVersion;
+    private readonly int _groupId;
+    private readonly int _httpClientTimeoutSeconds;
     private readonly ILogger<VkApiService> _logger;
 
-    public VkApiService(IConfiguration configuration, ILogger<VkApiService> logger)
+    public VkApiService(ILogger<VkApiService> logger)
     {
-        Guard.AgainstNull(configuration, nameof(configuration));
         Guard.AgainstNull(logger, nameof(logger));
-
-        _accessTokenVkAPI = configuration["VkApiKey"];
         _logger = logger;
+
+        var settings = SettingsManager.LoadSettings();
+        
+        _accessTokenVkAPI = settings.VkAccessToken;
+        _apiVersion = settings.ApiVersion;
+
+        if (settings.GroupID <= 0)
+        {
+            throw new ArgumentException($"{nameof(settings.GroupID)} cannot be zero or negative.", nameof(settings.GroupID));
+        }
+
+        _groupId = settings.GroupID;
+
+        _httpClientTimeoutSeconds = settings.HttpClientTimeout;
     }
 
     /// <summary>
@@ -173,8 +186,7 @@ public class VkApiService : IVkApiService
                 using var client = new HttpClient();
                 using var request = new HttpRequestMessage(HttpMethod.Post, URL);
 
-                // TODO: hardcoded value
-                client.Timeout = TimeSpan.FromSeconds(86400);
+                client.Timeout = TimeSpan.FromSeconds(_httpClientTimeoutSeconds);
                 var fileName = Path.GetFileName(file);
                 var fileContent = File.ReadAllBytes(file);
                 var content = new MultipartFormDataContent

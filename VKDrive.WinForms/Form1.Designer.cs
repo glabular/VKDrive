@@ -36,15 +36,16 @@ partial class Form1
         button_Delete_Selected = new Button();
         button_AddFolder = new Button();
         panel1 = new Panel();
+        buttonSettings = new Button();
         panel1.SuspendLayout();
         SuspendLayout();
         // 
         // buttonAddFile
         // 
-        buttonAddFile.Location = new Point(7, 338);
+        buttonAddFile.Location = new Point(7, 345);
         buttonAddFile.Margin = new Padding(2);
         buttonAddFile.Name = "buttonAddFile";
-        buttonAddFile.Size = new Size(76, 33);
+        buttonAddFile.Size = new Size(76, 24);
         buttonAddFile.TabIndex = 0;
         buttonAddFile.Text = "Add file";
         buttonAddFile.UseVisualStyleBackColor = true;
@@ -86,21 +87,21 @@ partial class Form1
         // 
         // button_Delete_Selected
         // 
-        button_Delete_Selected.Location = new Point(357, 338);
+        button_Delete_Selected.Location = new Point(279, 345);
         button_Delete_Selected.Margin = new Padding(2);
         button_Delete_Selected.Name = "button_Delete_Selected";
-        button_Delete_Selected.Size = new Size(97, 33);
+        button_Delete_Selected.Size = new Size(97, 23);
         button_Delete_Selected.TabIndex = 2;
-        button_Delete_Selected.Text = "Delete selected";
+        button_Delete_Selected.Text = "Delete";
         button_Delete_Selected.UseVisualStyleBackColor = true;
         button_Delete_Selected.Click += button_Delete_Selected_Click;
         // 
         // button_AddFolder
         // 
-        button_AddFolder.Location = new Point(87, 338);
+        button_AddFolder.Location = new Point(87, 345);
         button_AddFolder.Margin = new Padding(2);
         button_AddFolder.Name = "button_AddFolder";
-        button_AddFolder.Size = new Size(76, 33);
+        button_AddFolder.Size = new Size(76, 24);
         button_AddFolder.TabIndex = 3;
         button_AddFolder.Text = "Add folder";
         button_AddFolder.UseVisualStyleBackColor = true;
@@ -117,11 +118,22 @@ partial class Form1
         panel1.TabIndex = 4;
         panel1.Paint += panel1_Paint;
         // 
+        // buttonSettings
+        // 
+        buttonSettings.Location = new Point(381, 346);
+        buttonSettings.Name = "buttonSettings";
+        buttonSettings.Size = new Size(75, 23);
+        buttonSettings.TabIndex = 5;
+        buttonSettings.Text = "Settings";
+        buttonSettings.UseVisualStyleBackColor = true;
+        buttonSettings.Click += buttonSettings_Click;
+        // 
         // Form1
         // 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(467, 380);
+        Controls.Add(buttonSettings);
         Controls.Add(button_AddFolder);
         Controls.Add(button_Delete_Selected);
         Controls.Add(buttonAddFile);
@@ -143,4 +155,5 @@ partial class Form1
     private Button button_Delete_Selected;
     private Button button_AddFolder;
     private Panel panel1;
+    private Button buttonSettings;
 }

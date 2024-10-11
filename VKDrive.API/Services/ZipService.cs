@@ -1,4 +1,7 @@
 ﻿using Ionic.Zip;
+using SharedEntities;
+using SharedEntities.Models;
+using SharedEntities.Settings;
 using System.Text;
 using VKDrive.API.Interfaces;
 
@@ -6,12 +9,19 @@ namespace VKDrive.API.Services;
 
 public class ZipService : IArchiveService
 {
+    private readonly Settings _settings;
+
+    public ZipService()
+    {
+        _settings = SettingsManager.LoadSettings();
+        Guard.AgainstNull(_settings, nameof(_settings));
+    }
+
     public void CompressFile(string fileToCompress, string outputArchive, string password)
     {
         ValidateZipInput(fileToCompress, outputArchive, password);
 
-        // TODO: Hardcoded!
-        var level = Ionic.Zlib.CompressionLevel.Default;
+        var level = GetCompressionLevel();
 
         using var zip = new ZipFile()
         {
@@ -31,8 +41,7 @@ public class ZipService : IArchiveService
     {
         ValidateZipInput(folderToCompress, outputArchive, password);
 
-        // TODO: Hardcoded!
-        var level = Ionic.Zlib.CompressionLevel.Default;
+        var level = GetCompressionLevel();
 
         using var zip = new ZipFile()
         {
@@ -55,26 +64,39 @@ public class ZipService : IArchiveService
         using var zip = Ionic.Zip.ZipFile.Read(archiveToDecompress);
         zip.Password = password;
         zip.ExtractExistingFile = ExtractExistingFileAction.OverwriteSilently;
+
         try
         {
             zip.ExtractAll(outputFolder, ExtractExistingFileAction.OverwriteSilently);
         }
-        catch (BadPasswordException e)
+        catch (BadPasswordException)
         {
-            // TODO:
-            throw new Exception(e.Message);
+            throw;
         }
-        catch (IOException e)
+        catch (IOException)
         {
-            // TODO:
-            throw new Exception(e.Message);
+            throw;
         }
     }
 
-    private void ValidateZipInput(string filePath, string toBeCreated, string password)
+    private Ionic.Zlib.CompressionLevel GetCompressionLevel()
+    {
+        var selectedLevel = _settings.CompressionLevel;
+
+        return selectedLevel switch
+        {
+            MyCompressionLevel.None => Ionic.Zlib.CompressionLevel.None,
+            MyCompressionLevel.Minimal => Ionic.Zlib.CompressionLevel.Level3,
+            MyCompressionLevel.Default => Ionic.Zlib.CompressionLevel.Default,
+            MyCompressionLevel.Best => Ionic.Zlib.CompressionLevel.BestCompression,
+            _ => throw new ArgumentException("Invalid compression level"),
+        };
+    }
+
+    private static void ValidateZipInput(string filePath, string toBeCreatedFilePath, string password)
     {
         Guard.AgainstInvalidPath(filePath, nameof(filePath));
-        Guard.AgainstNullOrWhitespace(toBeCreated, nameof(toBeCreated));
+        Guard.AgainstNullOrWhitespace(toBeCreatedFilePath, nameof(toBeCreatedFilePath));
         Guard.AgainstNullOrWhitespace(password, nameof(password));
     }
 }

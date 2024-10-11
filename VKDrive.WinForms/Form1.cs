@@ -1,12 +1,12 @@
+using SharedEntities.Settings;
 using System.Diagnostics;
-using System.IO;
-using static VKDrive.WinForms.ApiService;
 
 namespace VKDrive.WinForms;
 
 public partial class Form1 : Form
 {
     private readonly ApiService _apiService;
+    private readonly Settings _settings;
     private float dashOffset = 0f;
     private System.Windows.Forms.Timer _timer;
     private bool isMouseOverPanel = false;
@@ -15,6 +15,7 @@ public partial class Form1 : Form
     {
         InitializeComponent();
         InitializeTimer();
+        _settings = SettingsManager.LoadSettings();
         _apiService = new ApiService();
         MaximizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -117,8 +118,7 @@ public partial class Form1 : Form
 
                 if (File.Exists(path) || Directory.Exists(path))
                 {
-                    // TODO: Read from the settings weather to open File Explorer or not.
-                    if (true)
+                    if (_settings.OpenFolderAfterDownload)
                     {
                         Process.Start("explorer.exe", $"/select,{path}");
                     }
@@ -207,7 +207,7 @@ public partial class Form1 : Form
         panel1.Invalidate();
         e.Effect = DragDropEffects.None;
 
-        if (e.Data is not IDataObject data 
+        if (e.Data is not IDataObject data
             || data.GetData(DataFormats.FileDrop) is not string[] droppedData
             || droppedData.Length == 0)
         {
@@ -227,7 +227,7 @@ public partial class Form1 : Form
             if (confirmResult == DialogResult.No)
             {
                 // Exit if the user chooses not to proceed
-                return; 
+                return;
             }
         }
 
@@ -271,5 +271,11 @@ public partial class Form1 : Form
             };
             e.Graphics.DrawRectangle(pen, 2, 2, panel1.Width - 4, panel1.Height - 4);
         }
+    }
+
+    private void buttonSettings_Click(object sender, EventArgs e)
+    {
+        var settingsWindow = new SettingsForm();
+        settingsWindow.ShowDialog();
     }
 }

@@ -1,4 +1,6 @@
-﻿using SharedEntities.Models;
+﻿using SharedEntities;
+using SharedEntities.Models;
+using SharedEntities.Settings;
 using System.Security.Cryptography;
 using VKDrive.API.Interfaces;
 
@@ -6,11 +8,12 @@ namespace VKDrive.API.Services;
 
 public class VkdriveEntryService
 {
-    private readonly string _temporaryFolder = @"D:\VKDrive\tmp"; // TODO
     private readonly string VKDriveFolder = @"D:\VKDrive"; // TODO
-    private const int archivePasswordLength = 8192; // TODO
-    private const int aesKeyLength = 32;
-    private const int ivLength = 16;
+    private readonly string _temporaryFolder = @"D:\VKDrive\tmp"; // TODO
+    private readonly string _downloadsFolder = @"D:\VKDrive\tmp\Downloads"; // TODO
+    private const int _archivePasswordLength = 8192; // TODO
+    private const int _aesKeyLength = 32;
+    private const int _ivLength = 16;
     private readonly FilePartitionerService _filePartitionerService;
     private readonly IEncryptionService _encryptionService;
     private readonly ILogger<VkdriveEntryService> _logger;
@@ -18,6 +21,7 @@ public class VkdriveEntryService
     private readonly IHashingService _hashingService;
     private readonly IArchiveService _zipService;
     private readonly IVkApiService _vkApiService;
+    private readonly Settings _settings;
 
     public VkdriveEntryService(
         FilePartitionerService filePartitionerService,
@@ -43,7 +47,12 @@ public class VkdriveEntryService
         _repository = repository;
         _zipService = zipService;
         _logger = logger;
+
+        _settings = SettingsManager.LoadSettings();
+        Guard.AgainstNull(_settings, nameof(_settings));
     }
+
+    public async Task<IEnumerable<VkdriveEntry>> GetAllEntriesAsync() => await _repository.GetAllEntriesAsync();
 
     /// <summary>
     /// Creates and saves a new entry for a file or folder by compressing, encrypting, and uploading it to VK server.
@@ -56,7 +65,7 @@ public class VkdriveEntryService
     {
         Guard.AgainstInvalidPath(path, nameof(path));
 
-        _logger.LogInformation("CreateAndSaveEntryAsync started with path: {Path}", path);
+        _logger.LogInformation("Entry creation process started for file: {FilePath}", path);
 
         var isFolder = IsFolder(path);
         var uniqueName = GenerateUniqueName();
@@ -73,10 +82,8 @@ public class VkdriveEntryService
 
         PerformEncryption(archivePath, encryptedFilePath, aesKey, initializationVector);
 
-        var splitFilesFolder = Path.Combine(_temporaryFolder, $"Splitted files {sha256Checksum[..7]}");
-        
-        var fileParts = PerformFileSplitting(uniqueName, encryptedFilePath, splitFilesFolder);
-        
+        var splitFilesFolder = Path.Combine(_temporaryFolder, $"Splitted files {sha256Checksum[..7]}");        
+        var fileParts = PerformFileSplitting(uniqueName, encryptedFilePath, splitFilesFolder);        
         var links = await UploadFilePartsToServer(fileParts);
 
         PerformCleanup(archivePath, encryptedFilePath, splitFilesFolder, fileParts);
@@ -100,6 +107,82 @@ public class VkdriveEntryService
         _logger.LogInformation("Entry successfully created and saved in the database.");
     }
 
+    public async Task<string> GetOriginalFileAsync(string uniqueName)
+    {
+        // TODO: Log trash fies ON DISK to clean them up even when the programm crashes.
+
+        var entry = await _repository.GetEntryByUniqueNameAsync(uniqueName);
+
+        if (entry is null)
+        {
+            _logger.LogWarning("No entry found for unique name: {UniqueName}", uniqueName);
+            return $"No entry found with the unique name \"{uniqueName}\".";
+        }
+
+        var partsOfFilePaths = await DownloadAllPartsOfFile(entry);        
+
+        var toBeDecrypted = Path.Combine(_temporaryFolder, "ToBeDecrypted.tmp");
+        var archivePath = Path.Combine(_temporaryFolder, "Archive.zip");
+
+        _logger.LogInformation("Joining parts into {ToBeDecrypted}", toBeDecrypted);
+        _filePartitionerService.JoinParts(partsOfFilePaths, toBeDecrypted);
+
+        _logger.LogInformation("Deleting temporary files.");
+        partsOfFilePaths.ForEach(File.Delete);
+
+        _logger.LogInformation("Decrypting file to {ArchivePath}", archivePath);
+        _encryptionService.DecryptFile(toBeDecrypted, entry.AesKey, entry.AesIV, archivePath);
+
+        _logger.LogInformation("Deleting temporary file {ToBeDecrypted}", toBeDecrypted);
+        File.Delete(toBeDecrypted);
+
+        if (!Directory.Exists(_downloadsFolder))
+        {
+            Directory.CreateDirectory(_downloadsFolder);
+        }
+
+        _logger.LogInformation("Decompressing archive to {DownloadsFolder}", _downloadsFolder);
+        _zipService.DecompressArchive(archivePath, _downloadsFolder, entry.ArchivePassword);
+
+        _logger.LogInformation("Deleting archive file {ArchivePath}", archivePath);
+        File.Delete(archivePath);
+
+        _logger.LogInformation("File retrieval successful.");
+
+        return Path.Combine(_downloadsFolder, entry.OriginalName);
+    }
+
+    public async Task<string> DeleteEntryAsync(string uniqueName)
+    {
+        if (string.IsNullOrEmpty(uniqueName))
+        {
+            _logger.LogWarning("DeleteEntryAsync was called with a null or empty unique name.");
+
+            return "Unique name cannot be null or empty.";
+        }
+
+        _logger.LogInformation("DeleteEntryAsync started for unique name: {UniqueName}", uniqueName);
+        _logger.LogDebug("Attempting to retrieve entry for unique name: {UniqueName}", uniqueName);
+        var entry = await _repository.GetEntryByUniqueNameAsync(uniqueName);
+
+        if (entry is null)
+        {
+            _logger.LogWarning("No entry found with the unique name \"{UniqueName}\".", uniqueName);
+
+            return $"No entry found with the unique name \"{uniqueName}\".";
+        }
+
+        _logger.LogInformation("Entry found. Proceeding to delete file parts from VK server.");
+        await DeleteFilePartsFromVkServer(entry.Links);
+
+        _logger.LogInformation("File parts deleted. Proceeding to remove entry from repository.");
+        await _repository.DeleteEntryAsync(uniqueName);
+
+        _logger.LogInformation("Deletion successful for entry with unique name: {UniqueName}", uniqueName);
+
+        return "Deletion successful.";
+    }
+
     private bool IsFolder(string path)
     {
         var isFolder = Directory.Exists(path);
@@ -109,7 +192,7 @@ public class VkdriveEntryService
 
     private async Task<List<string>> UploadFilePartsToServer(List<string> fileParts)
     {
-        _logger.LogInformation("Uploading {FilePartsCount} file parts to VK server.", fileParts.Count);
+        _logger.LogInformation("Uploading {FilePartsCount} file part(s) to VK server.", fileParts.Count);
 
         var URLs = new List<string>();
 
@@ -127,8 +210,7 @@ public class VkdriveEntryService
     {
         _logger.LogDebug("Splitting encrypted file into chunks in folder: {SplitFilesFolder}", splitFilesFolder);
 
-        // TODO: Get from settings!
-        var chinkSizeMb = 1;
+        var chinkSizeMb = _settings.ChunkToUploadSizeInMegabytes;
 
         return _filePartitionerService.SplitFile(filePath, chinkSizeMb, splitFilesFolder, uniqueName[..8]);
     }
@@ -141,15 +223,15 @@ public class VkdriveEntryService
 
     private byte[] GenerateIV()
     {
-        var initializationVector = _encryptionService.GenerateEncryptionKey(ivLength);
-        _logger.LogDebug("Generated initialization vector with {IvLength} length: {initializationVector}", ivLength, initializationVector);
+        var initializationVector = _encryptionService.GenerateEncryptionKey(_ivLength);
+        _logger.LogDebug("Generated initialization vector with {IvLength} length: {initializationVector}", _ivLength, initializationVector);
         return initializationVector;
     }
 
     private byte[] GenerateAesKey()
     {
-        var aesKey = _encryptionService.GenerateEncryptionKey(aesKeyLength);
-        _logger.LogDebug("Generated AES key with {AesKeyLength} length: {AesKey}", aesKeyLength, aesKey);
+        var aesKey = _encryptionService.GenerateEncryptionKey(_aesKeyLength);
+        _logger.LogDebug("Generated AES key with {AesKeyLength} length: {AesKey}", _aesKeyLength, aesKey);
         return aesKey;
     }
 
@@ -164,11 +246,11 @@ public class VkdriveEntryService
     {
         // TODO: Refactor, use GenerateEncryptionKey from AesEncryptionService.
         const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+[{]}|;:',<.>/?`~";
-        var password = new char[archivePasswordLength];
+        var password = new char[_archivePasswordLength];
         var rng = RandomNumberGenerator.Create();
         var buffer = new byte[sizeof(uint)];
 
-        for (int i = 0; i < archivePasswordLength; i++)
+        for (int i = 0; i < _archivePasswordLength; i++)
         {
             rng.GetBytes(buffer);
             uint randomIndex = BitConverter.ToUInt32(buffer, 0) % (uint)chars.Length;
@@ -219,89 +301,17 @@ public class VkdriveEntryService
     {
         if (isFolder)
         {
-            _logger.LogInformation("Compressing folder at {Path} to {ArchivePath} with a password.", path, archivePath);
+            _logger.LogInformation("Compressing folder at {Path} to {ArchivePath} with {PasswordLength}-length password.", path, archivePath, archivePassword.Length);
             _zipService.CompressFolder(path, archivePath, archivePassword);
         }
         else
         {
-            _logger.LogInformation("Compressing file at {Path} to {ArchivePath} with a password.", path, archivePath);
+            _logger.LogInformation("Compressing file at {Path} to {ArchivePath} with {PasswordLength}-length password.", path, archivePath, archivePassword.Length);
             _zipService.CompressFile(path, archivePath, archivePassword);
         }
 
         var compressedSize = new FileInfo(archivePath).Length;
         _logger.LogInformation("Compressed archive size: {Size}", GetReadableSize(compressedSize));
-    }
-
-    public async Task<string> GetOriginalFileAsync(string uniqueName)
-    {
-        var entry = await _repository.GetEntryByUniqueNameAsync(uniqueName);
-
-        if (entry is null)
-        {
-            _logger.LogWarning("No entry found for unique name: {UniqueName}", uniqueName);
-            return $"No entry found with the unique name \"{uniqueName}\".";
-        }
-
-        var partsOfFilePaths = await DownloadAllPartsOfFile(entry);
-        _logger.LogInformation("Downloaded {Count} parts for the file.", partsOfFilePaths.Count);
-
-        var toBeDecrypted = Path.Combine(_temporaryFolder, "ToBeDecrypted.tmp");
-        var archivePath = Path.Combine(_temporaryFolder, "Archive.zip");
-
-        _logger.LogInformation("Joining parts into {ToBeDecrypted}", toBeDecrypted);
-        _filePartitionerService.JoinParts(partsOfFilePaths, toBeDecrypted);
-
-        _logger.LogInformation("Deleting temporary files.");
-        partsOfFilePaths.ForEach(File.Delete);
-
-        _logger.LogInformation("Decrypting file to {ArchivePath}", archivePath);
-        _encryptionService.DecryptFile(toBeDecrypted, entry.AesKey, entry.AesIV, archivePath);
-
-        _logger.LogDebug("Deleting temporary file {ToBeDecrypted}", toBeDecrypted);
-        File.Delete(toBeDecrypted);
-
-        _logger.LogInformation("Decompressing archive to {TemporaryFolder}", _temporaryFolder);
-        _zipService.DecompressArchive(archivePath, _temporaryFolder, entry.ArchivePassword);
-
-        _logger.LogDebug("Deleting archive file {ArchivePath}", archivePath);
-        File.Delete(archivePath);
-
-        _logger.LogInformation("File retrieval successful.");
-
-        return Path.Combine(_temporaryFolder, entry.OriginalName);
-    }
-
-    public async Task<IEnumerable<VkdriveEntry>> GetAllEntriesAsync() => await _repository.GetAllEntriesAsync();
-
-    public async Task<string> DeleteEntryAsync(string uniqueName)
-    {
-        if (string.IsNullOrEmpty(uniqueName))
-        {
-            _logger.LogWarning("DeleteEntryAsync was called with a null or empty unique name.");
-
-            return "Unique name cannot be null or empty.";
-        }
-
-        _logger.LogInformation("DeleteEntryAsync started for unique name: {UniqueName}", uniqueName);
-        _logger.LogDebug("Attempting to retrieve entry for unique name: {UniqueName}", uniqueName);
-        var entry = await _repository.GetEntryByUniqueNameAsync(uniqueName);
-
-        if (entry is null)
-        {
-            _logger.LogWarning("No entry found with the unique name \"{UniqueName}\".", uniqueName);
-
-            return $"No entry found with the unique name \"{uniqueName}\".";
-        }
-
-        _logger.LogInformation("Entry found. Proceeding to delete file parts from VK server.");
-        await DeleteFilePartsFromVkServer(entry.Links);
-
-        _logger.LogInformation("File parts deleted. Proceeding to remove entry from repository.");
-        await _repository.DeleteEntryAsync(uniqueName);
-
-        _logger.LogInformation("Deletion successful for entry with unique name: {UniqueName}", uniqueName);
-
-        return "Deletion successful.";
     }
 
     private async Task DeleteFilePartsFromVkServer(List<string> links)
@@ -337,10 +347,9 @@ public class VkdriveEntryService
     private async Task<List<string>> DownloadAllPartsOfFile(VkdriveEntry entry)
     {
         var downloadedParts = new List<string>();
-        var downloadsFolder = Path.Combine(_temporaryFolder, "Downloads");
-        if (!Directory.Exists(downloadsFolder))
+        if (!Directory.Exists(_downloadsFolder))
         {
-            Directory.CreateDirectory(downloadsFolder);
+            Directory.CreateDirectory(_downloadsFolder);
         }
 
         using var client = new HttpClient();
@@ -353,10 +362,12 @@ public class VkdriveEntryService
             using var content = response.Content;
             var fileBytes = await content.ReadAsByteArrayAsync();
             var fileName = $"{entry.OriginalName} - to be assembled-{counter}.vkd";
-            var pathToBeWritten = Path.Combine(downloadsFolder, fileName);
+            var pathToBeWritten = Path.Combine(_downloadsFolder, fileName);
             await File.WriteAllBytesAsync(pathToBeWritten, fileBytes);
             downloadedParts.Add(pathToBeWritten);
         }
+
+        _logger.LogInformation("Downloaded {Count} parts for the file.", downloadedParts.Count);
 
         return downloadedParts;
     }    
